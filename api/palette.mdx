@@ -1,5 +1,5 @@
 ---
-title: "Palette API Reference — LWXGL"
+title: "Color Palette Management API Reference — LWXGL Library"
 sidebarTitle: "Palette"
 description: "Reference for GPaletteQuery, GPaletteModify, and GPaletteReset: inspect and modify the 16-color indexed palette used across all LWXGL rendering."
 ---
@@ -102,7 +102,7 @@ If `redraw` is set to `1`, `GRedrawAllImages()` is called automatically after th
 ### GPaletteReset
 
 ```c
-void GPaletteReset(void);
+void GPaletteReset();
 ```
 
 Frees all 16 currently allocated X11 colors from the default colormap and reallocates them from the library's built-in default palette values (see the table above). After all slots have been restored, `GRedrawAllImages()` is called unconditionally to refresh every image element on screen.

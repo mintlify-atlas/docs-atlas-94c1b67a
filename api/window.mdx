@@ -1,7 +1,7 @@
 ---
-title: "Window & Loop API Reference — LWXGL"
+title: "Window Management & Lifecycle API Reference — LWXGL"
 sidebarTitle: "Window"
-description: "Complete reference for LWXGL window creation, the render loop, lifecycle functions, modals, and the palette management API."
+description: "Complete reference for LWXGL window creation, the render loop, lifecycle management, modal dialogs, and the 16-color palette API for X11 applications."
 ---
 
 LWXGL exposes a small, focused set of functions for managing the lifetime of an X11 window. You create a window with `GCreateWindow`, drive it through either the built-in `GSimpleWindowLoop` or a manual event–render loop, and clean up with `GTerminateWindow`. The palette, modal, and image-refresh helpers documented here complement that core lifecycle.
@@ -51,10 +51,10 @@ Opens an X11 window of the given dimensions, allocates all 16 palette colors int
 ### GTerminateWindow
 
 ```c
-void GTerminateWindow(void);
+void GTerminateWindow();
 ```
 
-Frees every resource acquired by `GCreateWindow` and any subsequently created elements. Specifically, this function deletes all active elements, frees the graphics context, the back-buffer `Pixmap`, the stipple `Pixmap`, and all 16 allocated colors, then destroys the window and closes the display connection. Call this exactly once, after `GWindowShouldClose()` returns `1` (or after `GSimpleWindowLoop` returns).
+Frees every resource acquired by `GCreateWindow` and any subsequently created elements. Specifically, this function deletes all active elements, frees the font, the graphics context, the back-buffer `Pixmap`, the stipple `Pixmap`, and all 16 allocated colors, then destroys the window and closes the display connection. Call this exactly once, after `GWindowShouldClose()` returns `1` (or after `GSimpleWindowLoop` returns).
 
 <Warning>
   Do not call `GTerminateWindow` if `GCreateWindow` returned a non-zero error code — no resources will have been allocated, and calling it will result in undefined behavior.
@@ -65,7 +65,7 @@ Frees every resource acquired by `GCreateWindow` and any subsequently created el
 ### GDeleteWindow
 
 ```c
-void GDeleteWindow(void);
+void GDeleteWindow();
 ```
 
 Requests that the window close. If a delete callback has been registered with `GEventAttachDelete`, it is called and its return value becomes the new close flag (return `1` to confirm, `0` to cancel). If no callback is registered, the close flag is set to `1` unconditionally.
@@ -81,7 +81,7 @@ This function is called internally when the user clicks the window's close butto
 ### GWindowShouldClose
 
 ```c
-int GWindowShouldClose(void);
+int GWindowShouldClose();
 ```
 
 Returns `1` if the window has been marked for closing (i.e., `GDeleteWindow` was called and the close flag was set), `0` otherwise. Use this as the condition for a manual event loop.
@@ -93,7 +93,7 @@ Returns `1` if the window has been marked for closing (i.e., `GDeleteWindow` was
 ### GHandleWindowEvents
 
 ```c
-void GHandleWindowEvents(void);
+void GHandleWindowEvents();
 ```
 
 Drains all pending X11 events from the display connection and dispatches them to the appropriate internal handlers (expose, keyboard, mouse button, pointer motion, and leave-window events). Must be called once per frame in a manual loop before `GRenderWindow`. `GSimpleWindowLoop` calls this automatically.
@@ -107,7 +107,7 @@ Drains all pending X11 events from the display connection and dispatches them to
 ### GRenderWindow
 
 ```c
-void GRenderWindow(void);
+void GRenderWindow();
 ```
 
 Performs a complete render pass:
@@ -128,14 +128,14 @@ All drawing is performed off-screen on the back-buffer `Pixmap` before the final
 void GSimpleWindowLoop(int target_fps, void (*on_every)(int));
 ```
 
-Runs a fixed-FPS event loop that handles events, renders, and calls your per-frame callback on each tick. The loop uses `std::chrono::steady_clock` and will sleep or yield the thread between frames to stay close to the requested rate. It also measures per-frame work time and feeds it into the debug overlay's rolling average. The function returns only when `GWindowShouldClose()` becomes true.
+Runs a fixed-FPS event loop that handles events, renders, and calls your per-frame callback on each tick. Each iteration calls `GHandleWindowEvents`, then `GRenderWindow`, then `on_every` — so the callback runs after the frame is rendered. The loop uses `std::chrono::steady_clock` and will sleep or yield the thread between frames to stay close to the requested rate. It also measures per-frame work time and feeds it into the debug overlay's rolling average. The function returns only when `GWindowShouldClose()` becomes true.
 
 <ParamField path="target_fps" type="int" required>
   Desired frames per second. The frame budget is computed as `1 000 000 / target_fps` microseconds.
 </ParamField>
 
-<ParamField path="on_every" type="void (*)(int)" >
-  Callback invoked once per rendered frame. Receives the current **tick counter** (starts at `0`, increments by `1` each frame). Pass `NULL` if no per-frame callback is needed.
+<ParamField path="on_every" type="void (*)(int)">
+  Callback invoked once per rendered frame, after `GHandleWindowEvents` and `GRenderWindow` have both completed. Receives the current **tick counter** (starts at `0`, increments by `1` each frame). Pass `NULL` if no per-frame callback is needed.
 </ParamField>
 
 <Tip>
@@ -147,7 +147,7 @@ Runs a fixed-FPS event loop that handles events, renders, and calls your per-fra
 ### GSpawnModal
 
 ```c
-void GSpawnModal(int type, const char* msg, void (*on_confirm)(void));
+void GSpawnModal(int type, const char* msg, void (*on_confirm)());
 ```
 
 Displays a modal dialog drawn over the window contents. While the modal is active, all element interactions and the global click and key callbacks are suppressed — only the modal's own buttons accept input.
@@ -160,7 +160,7 @@ Displays a modal dialog drawn over the window contents. While the modal is activ
   Null-terminated message string to display in the dialog body. Newline characters (`\n`) are supported for multi-line messages.
 </ParamField>
 
-<ParamField path="on_confirm" type="void (*)(void)">
+<ParamField path="on_confirm" type="void (*)()">
   Callback invoked when the user clicks **OK**. Pass `NULL` if no action is needed on confirmation. The **Cancel** button always dismisses the modal without calling this callback.
 </ParamField>
 
@@ -173,7 +173,7 @@ Displays a modal dialog drawn over the window contents. While the modal is activ
 ### GQueryModalOpen
 
 ```c
-int GQueryModalOpen(void);
+int GQueryModalOpen();
 ```
 
 Returns `1` if a modal dialog is currently displayed and active, `0` otherwise. Useful for suppressing application-level logic that should not run while waiting for user confirmation.
@@ -185,7 +185,7 @@ Returns `1` if a modal dialog is currently displayed and active, `0` otherwise. 
 ### GRedrawAllImages
 
 ```c
-void GRedrawAllImages(void);
+void GRedrawAllImages();
 ```
 
 Marks every image element's internal previous-frame buffer as dirty, forcing a full pixel-data retransfer on the next `GRenderWindow` call. This is called automatically by `GPaletteModify` (when the `redraw` parameter is non-zero) and `GPaletteReset`, so you rarely need to invoke it directly.
@@ -209,15 +209,15 @@ Reads the current RGB values for a palette entry by querying the X11 colormap. T
 </ParamField>
 
 <ParamField path="r" type="unsigned char*" required>
-  Pointer to a `unsigned char` that will receive the red component (0–255).
+  Pointer to an `unsigned char` that will receive the red component (0–255).
 </ParamField>
 
 <ParamField path="g" type="unsigned char*" required>
-  Pointer to a `unsigned char` that will receive the green component (0–255).
+  Pointer to an `unsigned char` that will receive the green component (0–255).
 </ParamField>
 
 <ParamField path="b" type="unsigned char*" required>
-  Pointer to a `unsigned char` that will receive the blue component (0–255).
+  Pointer to an `unsigned char` that will receive the blue component (0–255).
 </ParamField>
 
 ---
@@ -255,7 +255,7 @@ Replaces the color at palette index `idx` by freeing the old colormap entry and 
 ### GPaletteReset
 
 ```c
-void GPaletteReset(void);
+void GPaletteReset();
 ```
 
 Restores all 16 palette entries to the built-in default CGA-style colors, then calls `GRedrawAllImages` to ensure image elements are refreshed. Useful for undoing runtime palette modifications.
@@ -296,7 +296,7 @@ The following program creates a 640×480 window with a black background, runs at
 #include <stdio.h>
 
 static void on_frame(int tick) {
-    /* Called once per frame. tick starts at 0 and increments each frame. */
+    /* Called once per frame, after events are handled and the frame is rendered. */
     (void)tick;
 }
 
@@ -308,7 +308,7 @@ int main(void) {
         return 1;
     }
 
-    /* Run at 60 fps; on_frame is called every tick */
+    /* Run at 60 fps; on_frame is called every tick after rendering */
     GSimpleWindowLoop(60, on_frame);
 
     /* Free all X11 resources after the loop exits */

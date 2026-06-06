@@ -1,7 +1,7 @@
 ---
 title: "Drawing with Image Canvases and Primitives in LWXGL"
 sidebarTitle: "Images & Primitives"
-description: "Allocate pixel-buffer image elements, draw shapes and sprites onto them, and flush changes to the screen with GUpdateImage."
+description: "Allocate pixel-buffer image canvases, draw primitive shapes and sprites onto them, and flush changes to the screen with GUpdateImage."
 ---
 
 Image elements are LWXGL's primary tool for custom 2D rendering. An image element is a `width × height` pixel buffer where every byte holds a palette color index from 0 to 15. You can write to this buffer directly, use the built-in primitive drawing functions to compose shapes and sprites, or mix both approaches. Changes become visible on screen only after you call `GUpdateImage`, which efficiently transfers only the pixels that changed since the last flush.
@@ -161,14 +161,14 @@ Sprites are described by compact ASCII strings. The renderer processes character
 | Character | Meaning |
 |-----------|---------|
 | `#` | Draw one filled pixel using the `color` argument |
-| `.` | Draw one transparent pixel (palette index 0) |
+| `.` | Draw one pixel in palette color 0 (black) |
 | `$` | Newline — move to the next row and reset `x` to `sx` |
-| `>` | Skip one pixel to the right (preceded by optional count) |
+| `>` | Skip one pixel to the right without drawing |
 | `N<char>` | Repeat `<char>` exactly `N` times (e.g. `5#` draws 5 filled pixels) |
 | `N[...]` | Repeat the group inside `[...]` exactly `N` times |
 | `!` | End of sprite — stop processing |
 
-A count prefix applies to the immediately following character or group. `>N` is shorthand for `N>` — it advances `N` pixels right.
+A count prefix `N` always precedes the character or group it modifies. For example, `3>` skips 3 pixels right and `2[3#2.]` repeats the group `3#2.` twice.
 
 **Example — 5×5 diamond:**
 
@@ -180,14 +180,14 @@ A count prefix applies to the immediately following character or group. `>N` is 
  *  ###
  *   #
  */
-const char *diamond = ">2#$>1###$5#$>1###$>2#!";
+const char *diamond = "2>#$1>3#$5#$1>3#$2>#!";
 GPrimitiveSprite(2, 10, 10, 14, diamond, 1); /* draw in yellow (14) */
 ```
 
 **Example — 3×3 cross:**
 
 ```c
-const char *cross = ">#.#$###$>#.#!";
+const char *cross = ".#.$###$.#.!";
 GPrimitiveSprite(2, 50, 50, 15, cross, 2); /* draw in white, 2× scale */
 ```
 
@@ -207,7 +207,7 @@ GPrimitiveSprite(2, 0, 0, 10, pattern, 1);
 void GRedrawAllImages(void);
 ```
 
-Forces every image element to be fully retransferred to its `XImage` on the next render pass, bypassing the dirty-pixel cache. This is useful after a palette modification, since changing a color index affects how every existing pixel with that index appears but does not change the pixel buffer values themselves.
+Invalidates the dirty-pixel cache for every image element and immediately re-uploads all pixels to the underlying `XImage`. This is useful after a palette modification, since changing a color index affects how every existing pixel with that index appears but does not change the stored byte values in the pixel buffers.
 
 ```c
 GPaletteModify(3, 0, 200, 200, 0); /* change color, don't auto-redraw yet */

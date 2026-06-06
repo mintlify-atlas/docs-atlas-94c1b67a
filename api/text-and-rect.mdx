@@ -1,10 +1,10 @@
 ---
-title: "Text and Rectangle Element API — LWXGL"
+title: "GCreateText and GCreateRect Element Reference — LWXGL"
 sidebarTitle: "Text & Rect"
 description: "API reference for GCreateText and GCreateRect: create palette-colored text labels and filled rectangle panel elements in an LWXGL window."
 ---
 
-LWXGL provides two foundational element types for rendering static visual content: text labels drawn with a fixed bitmap font, and filled rectangles used for panels, dividers, or decorative backgrounds. Both elements are identified by an integer ID and rendered on every call to `GRenderWindow`. This page also covers the shared management functions `GDeleteElement` and `GElemModifyBounds`, which apply to every element type in the library.
+LWXGL provides two foundational element types for rendering static visual content: text labels drawn with the `9x15` bitmap font, and filled rectangles used for panels, dividers, or decorative backgrounds. Both elements are identified by an integer ID and rendered on every call to `GRenderWindow`. This page also covers the shared management functions `GDeleteElement` and `GElemModifyBounds`, which apply to every element type in the library.
 
 ---
 
@@ -14,7 +14,7 @@ LWXGL provides two foundational element types for rendering static visual conten
 void GCreateText(int id, int x, int y, int color, const char* text);
 ```
 
-Creates a text label element, or replaces any existing element at the given `id`. The text is rendered using the `9x15` bitmap font built into the X11 server. Multi-line strings are supported — each `\n` character advances rendering to the next line, 16 pixels lower. Only a single foreground palette color is applied; there is no background fill for text elements (the window or a `GCreateRect` element beneath it provides the background).
+Creates a text label element, or replaces any existing element at the given `id`. The text is rendered using the `9x15` bitmap font built into the X11 server. Multi-line strings are supported — each `\n` character advances rendering to the next line, 16 pixels lower. Only a single foreground palette color is applied; there is no background fill for text elements (the window background or a `GCreateRect` element beneath it provides the background).
 
 <ParamField path="id" type="int" required>
   Element slot index. If an element already exists at this ID it is freed and replaced.
@@ -25,7 +25,7 @@ Creates a text label element, or replaces any existing element at the given `id`
 </ParamField>
 
 <ParamField path="y" type="int" required>
-  Y coordinate of the text baseline's first line. The renderer adds 11 pixels internally before drawing the first line, so `y=0` places the top of the first glyph near the top of the window.
+  Y coordinate of the text's first line. The renderer adds 11 pixels internally before drawing the first line, so `y=0` places the top of the first glyph near the top of the window.
 </ParamField>
 
 <ParamField path="color" type="int" required>
@@ -37,7 +37,7 @@ Creates a text label element, or replaces any existing element at the given `id`
 </ParamField>
 
 <Note>
-  Each line of a multi-line string is rendered at `y + 16 * line_number` (offset from the starting baseline). Line spacing is fixed at 16 pixels regardless of font size.
+  Each line of a multi-line string is rendered 16 pixels below the previous one. Line spacing is fixed at 16 pixels regardless of font size.
 </Note>
 
 ---
@@ -94,7 +94,7 @@ These functions work on **any** element type created through LWXGL, not just tex
 void GDeleteElement(int index);
 ```
 
-Frees the element at the given ID and sets its slot to `NULL`. For image elements, the backing `XImage` and pixel buffers are also released. Calling this on an already-null or out-of-range slot is a no-op.
+Frees the element at the given index and sets its slot to `NULL`. For image elements, the backing `XImage` and pixel buffers (`data` and `prev`) are also released before freeing the element. Calling this on an already-null or out-of-range slot is a no-op.
 
 <ParamField path="index" type="int" required>
   Element slot index to free.
@@ -142,17 +142,17 @@ The following example creates a gray panel rectangle and overlays a white title 
 #include "libLWXGL.h"
 
 void setup(void) {
-    /* Draw a dark gray filled panel at (20, 20), 300×40 pixels.
+    /* Draw a dark gray filled panel at (20, 20), 300x40 pixels.
        fg=7 (light gray border), bg=8 (dark gray fill) */
     GCreateRect(0, 20, 20, 300, 40, 7, 8);
 
-    /* Place a white text label centered inside the panel.
+    /* Place a white text label inside the panel.
        color=15 (white) */
     GCreateText(1, 30, 28, 15, "LWXGL Demo Panel");
 }
 
 void on_frame(int frame) {
-    /* Slide the panel 1 pixel to the right every frame */
+    /* Slide the panel 1 pixel to the right every other frame */
     if (frame % 2 == 0) {
         GElemModifyBounds(0, 20 + frame / 2, 20, 300, 40);
         GElemModifyBounds(1, 30 + frame / 2, 28, 0, 0);

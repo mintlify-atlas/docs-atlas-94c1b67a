@@ -1,5 +1,5 @@
 ---
-title: "Primitive Drawing API Reference — LWXGL"
+title: "Primitive Drawing Functions API Reference — LWXGL"
 sidebarTitle: "Primitives"
 description: "Reference for GPrimitiveRect, GPrimitiveCircle, GPrimitiveLine, and GPrimitiveSprite: draw shapes and sprites into LWXGL image element pixel buffers."
 ---
@@ -178,9 +178,14 @@ The sprite string below draws a 3-pixel-wide cross on a 7×7 logical grid, then 
 
 ```c
 GCreateImage(3, 50, 50, 64, 64);
-/* A 3-pixel wide cross on a 7x7 grid */
-GPrimitiveSprite(3, 0, 0, 15, ">2#$>2#$7#$>2#$>2#$", 2);
+/* A 3-pixel-wide cross on a 7x7 logical grid, rendered at 2x scale (14x14 px) */
+GPrimitiveSprite(3, 0, 0, 15, "3[>23#$]7#$3[>23#$]", 2);
 GUpdateImage(3);
 ```
+
+The sprite `"3[>23#$]7#$3[>23#$]"` breaks down as:
+- `3[>23#$]` — repeat 3 times: skip 2 pixels right, draw 3 foreground pixels, newline (rows 0–2, arm at columns 2–4)
+- `7#$` — draw 7 foreground pixels, newline (row 3, the full horizontal bar)
+- `3[>23#$]` — same 3-row arm again (rows 4–6, arm at columns 2–4)
 
 The cross uses palette index `15` (white) as the foreground color. After `GPrimitiveSprite` modifies the buffer, `GUpdateImage` flushes the changes to the screen.

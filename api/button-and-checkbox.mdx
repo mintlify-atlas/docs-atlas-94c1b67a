@@ -1,5 +1,5 @@
 ---
-title: "Button and Checkbox Element API — LWXGL"
+title: "GCreateButton and GCreateCheckbox Reference — LWXGL"
 sidebarTitle: "Button & Checkbox"
 description: "API reference for GCreateButton and GCreateCheckbox: interactive click targets and toggles with nibble-packed color states and callbacks."
 ---
@@ -112,7 +112,7 @@ Creates a checkbox element, or replaces any existing element at the given `id`. 
 </ParamField>
 
 <ParamField path="cb_col" type="int" required>
-  Nibble-packed color byte for the checkbox square. Low nibble = fill index, high nibble = border index. The checked indicator uses the same border color.
+  Nibble-packed color byte for the checkbox square. Low nibble = fill index, high nibble = border index. The checked indicator (inner square) is drawn using the border color (high nibble).
 </ParamField>
 
 <ParamField path="txt_col" type="int" required>
@@ -169,13 +169,6 @@ void on_submit(void) {
     }
 }
 
-void on_frame(int frame) {
-    /* Dim the button visually when the checkbox is unchecked.
-       Here we simply recreate it with a different color scheme —
-       in a real app you might track state and only recreate on change. */
-    (void)frame;
-}
-
 int main(void) {
     GCreateWindow(400, 200, "Button & Checkbox Demo", 0);
 
@@ -192,7 +185,7 @@ int main(void) {
                   "Submit",
                   on_submit);
 
-    GSimpleWindowLoop(60, on_frame);
+    GSimpleWindowLoop(60, NULL);
     GDeleteWindow();
     return 0;
 }

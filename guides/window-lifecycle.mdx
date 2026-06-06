@@ -1,5 +1,5 @@
 ---
-title: "Window Lifecycle and the Render Loop in LWXGL"
+title: "Window Lifecycle in LWXGL: Create, Loop, and Destroy"
 sidebarTitle: "Window Lifecycle"
 description: "Understand how to create, drive, and destroy an LWXGL window. Covers GCreateWindow, GSimpleWindowLoop, and the manual loop pattern."
 ---
@@ -162,7 +162,7 @@ GTerminateWindow(); /* always call after the loop */
 
 The overlay is only available inside `GSimpleWindowLoop`; it is not drawn in a manual loop unless you call `GRenderWindow` from within `GSimpleWindowLoop` implicitly.
 
-You can also close the window at any time by pressing <kbd>Ctrl</kbd>+<kbd>Escape</kbd>, which triggers `GDeleteWindow()` directly regardless of any attached delete callback.
+You can also close the window at any time by pressing <kbd>Ctrl</kbd>+<kbd>Escape</kbd>, which calls `GDeleteWindow()` — invoking the registered delete callback if one is attached.
 
 ---
 

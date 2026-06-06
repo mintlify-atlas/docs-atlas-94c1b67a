@@ -1,7 +1,7 @@
 ---
-title: "UI Elements: Text, Buttons, Inputs, and More"
+title: "UI Elements in LWXGL: Text, Buttons, Inputs, and More"
 sidebarTitle: "UI Elements"
-description: "Create and manage LWXGL UI elements by integer ID. Covers text labels, buttons, text inputs, checkboxes, and rectangle panels."
+description: "Create and manage LWXGL UI elements by integer ID. Covers text labels, buttons, inputs, checkboxes, and decorative rectangle panels."
 ---
 
 LWXGL manages all visible UI objects — text, buttons, inputs, checkboxes, rectangles, and image canvases — through a single flat element table indexed by user-assigned integer IDs. Every create call maps one ID to one element: if you create an element at an ID that is already in use, the existing element is silently destroyed first and replaced by the new one. This makes it straightforward to swap or update elements without tracking stale handles.

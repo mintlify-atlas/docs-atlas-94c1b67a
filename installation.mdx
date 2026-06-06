@@ -1,7 +1,7 @@
 ---
-title: "Install LWXGL on Linux from Source"
+title: "Install LWXGL: Build libLWXGL.so from Source on Linux"
 sidebarTitle: "Installation"
-description: "Build libLWXGL.so from source with make and install the shared library and header system-wide in two commands."
+description: "Build libLWXGL.so from source with a one-line g++ command, install the shared library and header to /usr/local, and link with -lLWXGL."
 ---
 
 LWXGL ships as a single shared object — `libLWXGL.so` — built directly from source with a one-line `g++` invocation wrapped in a `Makefile`. There are no pre-built binaries; you compile it on your own machine and install it system-wide so that any project on the same machine can link against `-lLWXGL`. The build produces a position-independent shared library with hidden visibility by default, meaning only the functions explicitly tagged with `__attribute__((visibility("default")))` are part of the public ABI.
@@ -60,13 +60,13 @@ The `make install` target performs the following three steps:
 
 Once the library is installed, compile any C program against it by passing `-lLWXGL -lX11` to GCC:
 
-```bash gcc
+```bash
 gcc -o my_app my_app.c -lLWXGL -lX11
 ```
 
 For C++ projects, use G++ instead:
 
-```bash g++
+```bash
 g++ -o my_app my_app.cpp -lLWXGL -lX11
 ```
 

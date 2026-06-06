@@ -1,7 +1,7 @@
 ---
-title: "Using and Modifying the LWXGL 16-Color Palette"
+title: "LWXGL 16-Color Palette: Default Values and Runtime Edits"
 sidebarTitle: "Palette"
-description: "LWXGL uses a fixed 16-color indexed palette. Learn the default colors, how to query and modify palette entries at runtime, and how colors are referenced throughout the API."
+description: "LWXGL uses a 16-color indexed palette. Learn the default RGB values, how to query and modify palette slots at runtime, and how colors map to the API."
 ---
 
 Every color in LWXGL is referenced by a **palette index** from 0 to 15. When `GCreateWindow` runs, all 16 colors are allocated upfront as X11 colormap entries using `XAllocColor`. From that point on, every drawing call — text, buttons, primitives, image pixels — uses one of these 16 indices rather than raw RGB values. This indexed approach keeps the API simple and enables instant global theme changes: modifying a single palette slot immediately affects every element that references that index.

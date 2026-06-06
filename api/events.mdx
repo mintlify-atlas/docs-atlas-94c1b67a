@@ -1,7 +1,7 @@
 ---
-title: "Events & Input API Reference — LWXGL"
+title: "Event Callbacks & Input Polling API Reference — LWXGL"
 sidebarTitle: "Events & Input"
-description: "Reference for LWXGL event callbacks (key, click, window-close) and input polling functions (mouse position, keyboard state)."
+description: "Reference for LWXGL event callbacks (key, click, window-close) and input polling functions (mouse position, keyboard state, key constants)."
 ---
 
 LWXGL provides two complementary approaches to handling user input. The **callback model** lets you register functions that are invoked automatically when a key is pressed, the mouse is clicked, or the window close button is activated. The **polling model** lets you query the current state of the mouse and keyboard at any time — useful inside per-frame logic driven by `GSimpleWindowLoop`. Both approaches can be used together in the same application.
@@ -54,12 +54,12 @@ Registers a callback that fires on mouse **button release**. The callback receiv
 ### GEventAttachDelete
 
 ```c
-void GEventAttachDelete(int (*on_exit)(void));
+void GEventAttachDelete(int (*on_exit)());
 ```
 
 Registers a callback that fires when the user attempts to close the window (either by clicking the title-bar close button or by pressing Ctrl+Escape). The callback's return value controls whether the close actually proceeds.
 
-<ParamField path="on_exit" type="int (*)(void)" required>
+<ParamField path="on_exit" type="int (*)()" required>
   Pointer to the callback function. Return `1` to confirm the close (sets the closing flag), or `0` to cancel it (the window remains open).
 </ParamField>
 
@@ -98,12 +98,12 @@ Polls the current mouse state, writing the cursor position and button state into
 ### GQueryKeyboard
 
 ```c
-unsigned char* GQueryKeyboard(void);
+unsigned char* GQueryKeyboard();
 ```
 
 Returns a pointer to LWXGL's internal `unsigned char[8]` array of currently held key codes. Each non-zero slot contains the ASCII value or `LWXGL_KEY_*` constant of a key being held at the time of the call. Slots whose value is `0` are empty.
 
-**Return value** — Pointer to the internal 8-element key state array. Do not free or cache this pointer across frames; read it immediately.
+**Return value** — Pointer to the internal 8-element `unsigned char` array. Do not free or cache this pointer across frames; read it immediately after the call.
 
 <Warning>
   The array is shared internal state updated by `GHandleWindowEvents`. Up to **8 simultaneous keys** are tracked; any keys beyond the first 8 held concurrently are silently dropped.
@@ -133,14 +133,14 @@ LWXGL translates non-printable keys into numeric constants in the range 150–17
 
 | Constant | Value | Key |
 |----------|-------|-----|
+| `LWXGL_KEY_FN` | 150 | F-key base constant (not a key itself) |
 | `LWXGL_KEY_LEFT` | 170 | Left arrow |
 | `LWXGL_KEY_RIGHT` | 171 | Right arrow |
 | `LWXGL_KEY_UP` | 172 | Up arrow |
 | `LWXGL_KEY_DOWN` | 173 | Down arrow |
-| `LWXGL_KEY_FN` | 150 | F-key base (F1 = 151 … F11 = 161) |
 
 <Note>
-  Function keys are computed as `LWXGL_KEY_FN + n`, where `n` is the function key number (1–11). For example, F1 = `151`, F5 = `155`, F11 = `161`. **F12 (value 162) is reserved** for the debug overlay toggle and will never appear in a key callback or the keyboard state array.
+  Function keys are computed as `LWXGL_KEY_FN + n`, where `n` is the function key number (1–12). The resulting values are F1 = `151`, F2 = `152`, …, F11 = `161`, F12 = `162`. **F12 (value 162) is reserved** for the debug overlay toggle and will never appear in a key callback or the keyboard state array.
 </Note>
 
 ---

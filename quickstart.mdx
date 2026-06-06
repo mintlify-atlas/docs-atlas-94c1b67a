@@ -1,7 +1,7 @@
 ---
-title: "Get Started with LWXGL: Build Your First Window"
+title: "Get Started with LWXGL: Build Your First X11 Window"
 sidebarTitle: "Quickstart"
-description: "Learn how to open an X11 window with LWXGL, add a button and text label, and run a fixed-FPS event loop in under 30 lines of C."
+description: "Learn how to open an X11 window with LWXGL, add a text label and button, then run a fixed-FPS event loop — all in under 30 lines of C."
 ---
 
 This guide walks you through writing a minimal LWXGL application from scratch. By the end you will have a 400×300 pixel X11 window containing a text label and a clickable button, running at a steady 60 frames per second. Everything shown here — opening the window, creating elements, running the loop, and cleaning up — uses the core LWXGL API and compiles to a single C source file.
@@ -74,7 +74,7 @@ This guide walks you through writing a minimal LWXGL application from scratch. B
 
 ## Complete Example
 
-```c hello.c
+```c
 #include <libLWXGL.h>
 #include <stdio.h>
 
