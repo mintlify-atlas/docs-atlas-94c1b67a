@@ -1,0 +1,212 @@
+---
+title: "Events & Input API Reference — LWXGL"
+sidebarTitle: "Events & Input"
+description: "Reference for LWXGL event callbacks (key, click, window-close) and input polling functions (mouse position, keyboard state)."
+---
+
+LWXGL provides two complementary approaches to handling user input. The **callback model** lets you register functions that are invoked automatically when a key is pressed, the mouse is clicked, or the window close button is activated. The **polling model** lets you query the current state of the mouse and keyboard at any time — useful inside per-frame logic driven by `GSimpleWindowLoop`. Both approaches can be used together in the same application.
+
+---
+
+### GEventAttachKey
+
+```c
+void GEventAttachKey(void (*Key)(int key));
+```
+
+Registers a callback that fires each time a key is pressed. The callback receives a single integer representing the key: printable ASCII characters are passed by their ASCII value, and special keys (arrows, function keys) use the `LWXGL_KEY_*` constants defined below.
+
+<ParamField path="Key" type="void (*)(int key)" required>
+  Pointer to the callback function. The `key` parameter delivered to the callback is the ASCII value of the pressed character, or an `LWXGL_KEY_*` constant for non-printable keys.
+</ParamField>
+
+<Warning>
+  **F12** and **Ctrl+Escape** are reserved by LWXGL and are never forwarded to the key callback. F12 toggles the built-in debug overlay; Ctrl+Escape triggers `GDeleteWindow`.
+</Warning>
+
+<Note>
+  When an **input element** is hovered and the user types, keystrokes are consumed by that element and are **not** forwarded to the key callback. The callback only fires when no focused input element claims the event.
+</Note>
+
+---
+
+### GEventAttachClick
+
+```c
+void GEventAttachClick(void (*Click)(int x, int y, int btn));
+```
+
+Registers a callback that fires on mouse **button release**. The callback receives the cursor coordinates at the time of release and the X11 button identifier.
+
+<ParamField path="Click" type="void (*)(int x, int y, int btn)" required>
+  Pointer to the callback function. The parameters delivered to the callback are:
+  - `x` — cursor X position at release time (pixels from left edge).
+  - `y` — cursor Y position at release time (pixels from top edge).
+  - `btn` — X11 button number: `1` = left, `2` = middle, `3` = right.
+</ParamField>
+
+<Note>
+  The click callback is **not** called when a **button** or **checkbox** element is clicked — those elements consume the release event before the global callback is reached. It is also suppressed entirely while a modal dialog is open.
+</Note>
+
+---
+
+### GEventAttachDelete
+
+```c
+void GEventAttachDelete(int (*on_exit)(void));
+```
+
+Registers a callback that fires when the user attempts to close the window (either by clicking the title-bar close button or by pressing Ctrl+Escape). The callback's return value controls whether the close actually proceeds.
+
+<ParamField path="on_exit" type="int (*)(void)" required>
+  Pointer to the callback function. Return `1` to confirm the close (sets the closing flag), or `0` to cancel it (the window remains open).
+</ParamField>
+
+<Tip>
+  Use `GEventAttachDelete` to show a confirmation modal before allowing the window to close. Call `GSpawnModal` inside the callback and return `0`, then call `GDeleteWindow` from the modal's confirm handler.
+</Tip>
+
+---
+
+### GQueryMouse
+
+```c
+void GQueryMouse(int* x, int* y, int* btn);
+```
+
+Polls the current mouse state, writing the cursor position and button state into the provided output pointers. All three pointers must be valid — passing `NULL` for any of them is undefined behavior.
+
+<ParamField path="x" type="int*" required>
+  Receives the current cursor X position in pixels from the left edge of the window. Set to `-1` when the cursor is outside the window.
+</ParamField>
+
+<ParamField path="y" type="int*" required>
+  Receives the current cursor Y position in pixels from the top edge of the window. Set to `-1` when the cursor is outside the window.
+</ParamField>
+
+<ParamField path="btn" type="int*" required>
+  Receives the currently held mouse button (`1` = left, `2` = middle, `3` = right). Set to `0` when no button is held.
+</ParamField>
+
+<Note>
+  Both `x` and `y` are set to `-1` together whenever the pointer leaves the window area (tracked via X11's `LeaveNotify` event). Check for `-1` before using these values for hit-testing.
+</Note>
+
+---
+
+### GQueryKeyboard
+
+```c
+unsigned char* GQueryKeyboard(void);
+```
+
+Returns a pointer to LWXGL's internal `unsigned char[8]` array of currently held key codes. Each non-zero slot contains the ASCII value or `LWXGL_KEY_*` constant of a key being held at the time of the call. Slots whose value is `0` are empty.
+
+**Return value** — Pointer to the internal 8-element key state array. Do not free or cache this pointer across frames; read it immediately.
+
+<Warning>
+  The array is shared internal state updated by `GHandleWindowEvents`. Up to **8 simultaneous keys** are tracked; any keys beyond the first 8 held concurrently are silently dropped.
+</Warning>
+
+---
+
+### GQueryKeyDown
+
+```c
+int GQueryKeyDown(int ch);
+```
+
+Convenience wrapper over `GQueryKeyboard`. Scans the 8-element key array and returns whether the specified key is currently held.
+
+<ParamField path="ch" type="int" required>
+  The key code to test — either an ASCII character value or an `LWXGL_KEY_*` constant.
+</ParamField>
+
+**Return value** — `1` if the key is currently held, `0` otherwise.
+
+---
+
+## Special Key Constants
+
+LWXGL translates non-printable keys into numeric constants in the range 150–173, safely above the printable ASCII range (32–126). Use these constants with `GQueryKeyDown`, or compare against the `key` parameter inside a `GEventAttachKey` callback.
+
+| Constant | Value | Key |
+|----------|-------|-----|
+| `LWXGL_KEY_LEFT` | 170 | Left arrow |
+| `LWXGL_KEY_RIGHT` | 171 | Right arrow |
+| `LWXGL_KEY_UP` | 172 | Up arrow |
+| `LWXGL_KEY_DOWN` | 173 | Down arrow |
+| `LWXGL_KEY_FN` | 150 | F-key base (F1 = 151 … F11 = 161) |
+
+<Note>
+  Function keys are computed as `LWXGL_KEY_FN + n`, where `n` is the function key number (1–11). For example, F1 = `151`, F5 = `155`, F11 = `161`. **F12 (value 162) is reserved** for the debug overlay toggle and will never appear in a key callback or the keyboard state array.
+</Note>
+
+---
+
+## Code Example
+
+The example below shows both the callback and polling approaches used together: a click callback logs where the user clicked, and a per-frame callback uses `GQueryKeyDown` to move a hypothetical object with the arrow keys.
+
+```c
+#include "libLWXGL.h"
+#include <stdio.h>
+
+static int obj_x = 320;
+static int obj_y = 240;
+
+/* Click callback — fired on mouse button release */
+static void on_click(int x, int y, int btn) {
+    if (btn == 1) {
+        printf("Left click at (%d, %d)\n", x, y);
+    }
+}
+
+/* Per-frame callback — called every tick by GSimpleWindowLoop */
+static void on_frame(int tick) {
+    (void)tick;
+
+    /* Poll arrow keys to move the object */
+    if (GQueryKeyDown(LWXGL_KEY_LEFT))  obj_x -= 2;
+    if (GQueryKeyDown(LWXGL_KEY_RIGHT)) obj_x += 2;
+    if (GQueryKeyDown(LWXGL_KEY_UP))    obj_y -= 2;
+    if (GQueryKeyDown(LWXGL_KEY_DOWN))  obj_y += 2;
+}
+
+/* Key callback — fired on each key press event */
+static void on_key(int key) {
+    if (key == 'q' || key == 'Q') {
+        GDeleteWindow();
+    }
+    /* Check for F1 using the FN base constant */
+    if (key == LWXGL_KEY_FN + 1) {
+        printf("F1 pressed\n");
+    }
+}
+
+/* Window-close callback — confirm before exiting */
+static int on_close(void) {
+    /* Return 1 to allow close, 0 to cancel */
+    printf("Window close requested\n");
+    return 1;
+}
+
+int main(void) {
+    if (GCreateWindow(640, 480, "Events Demo", 0) != 0) {
+        return 1;
+    }
+
+    GEventAttachClick(on_click);
+    GEventAttachKey(on_key);
+    GEventAttachDelete(on_close);
+
+    GSimpleWindowLoop(60, on_frame);
+    GTerminateWindow();
+    return 0;
+}
+```
+
+<Tip>
+  Prefer `GQueryKeyDown` inside `on_frame` for smooth, frame-rate-coupled movement (held keys), and use `GEventAttachKey` for discrete actions like menu navigation or text input handling (single presses).
+</Tip>

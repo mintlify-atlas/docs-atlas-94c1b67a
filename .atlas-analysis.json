@@ -1,0 +1,119 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "LWXGL",
+  "projectDescription": "A lightweight C library for building simple GUI applications on Linux using the X11 windowing system.",
+  "theme": "aspen",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#93C5FD",
+  "darkColor": "#1D4ED8",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/window-lifecycle",
+              "guides/elements",
+              "guides/images-and-primitives",
+              "guides/events",
+              "guides/palette"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Window",
+            "pages": [
+              "api/window"
+            ]
+          },
+          {
+            "group": "Elements",
+            "pages": [
+              "api/text-and-rect",
+              "api/button-and-checkbox",
+              "api/input",
+              "api/image"
+            ]
+          },
+          {
+            "group": "Events & Input",
+            "pages": [
+              "api/events"
+            ]
+          },
+          {
+            "group": "Primitives & Palette",
+            "pages": [
+              "api/primitives",
+              "api/palette"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Minimal X11-backed window creation and management",
+    "UI element system: text, buttons, inputs, checkboxes, rects, and images",
+    "Software-rendered image canvas with palette-indexed colors",
+    "Built-in sprite drawing with RLE encoding",
+    "Event system: keyboard, mouse, and window close callbacks",
+    "Fixed 16-color palette with runtime modification",
+    "Modal dialog support",
+    "FPS-capped game loop via GSimpleWindowLoop",
+    "C-compatible header for use from C and C++ projects",
+    "Shared library distributed as a single .so file"
+  ],
+  "publicApiSurface": [
+    "GCreateWindow(int w, int h, const char* name, int bgcol)",
+    "GTerminateWindow()",
+    "GDeleteWindow()",
+    "GWindowShouldClose()",
+    "GHandleWindowEvents()",
+    "GRenderWindow()",
+    "GSimpleWindowLoop(int target_fps, void (*on_every)(int))",
+    "GCreateText(int id, int x, int y, int color, const char* text)",
+    "GCreateButton(int id, int x, int y, int w, int h, int u, int hvr, int p, const char* label, void (*onclick)(void))",
+    "GCreateInput(int id, int x, int y, int w, int h, int u, int hvr, int max)",
+    "GGetInput(int id)",
+    "GCreateRect(int id, int x, int y, int w, int h, int fg, int bg)",
+    "GCreateCheckbox(int id, int x, int y, int size, int cb_col, int txt_col, const char* label)",
+    "GGetCheckbox(int id)",
+    "GCreateImage(int id, int x, int y, int w, int h)",
+    "GGetImageData(int id)",
+    "GUpdateImage(int id)",
+    "GClearImage(int id, int c)",
+    "GRedrawAllImages()",
+    "GDeleteElement(int index)",
+    "GElemModifyBounds(int id, int x, int y, int w, int h)",
+    "GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg)",
+    "GPrimitiveCircle(int id, int cx, int cy, int r, int fg, int bg)",
+    "GPrimitiveLine(int id, int x1, int y1, int x2, int y2, int color)",
+    "GPrimitiveSprite(int id, int sx, int sy, int color, const char* sprite, int scale)",
+    "GEventAttachKey(void (*Key)(int key))",
+    "GEventAttachClick(void (*Click)(int x, int y, int btn))",
+    "GEventAttachDelete(int (*on_exit)())",
+    "GQueryMouse(int* x, int* y, int* btn)",
+    "GQueryKeyboard()",
+    "GQueryKeyDown(int ch)",
+    "GSpawnModal(int type, const char* msg, void (*on_confirm)())",
+    "GQueryModalOpen()",
+    "GPaletteQuery(int idx, unsigned char* r, unsigned char* g, unsigned char* b)",
+    "GPaletteModify(int idx, unsigned char r, unsigned char g, unsigned char b, int redraw)",
+    "GPaletteReset()"
+  ]
+}

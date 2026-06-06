@@ -1,0 +1,323 @@
+---
+title: "Image Element API — LWXGL"
+sidebarTitle: "Image"
+description: "API reference for LWXGL image elements: allocate palette-indexed pixel buffers, draw primitives onto them, and flush changes to the screen."
+---
+
+LWXGL image elements give you a pixel-addressable canvas that lives at an arbitrary position in the window. The canvas is backed by a flat byte array — one byte per pixel — where each byte holds a palette index (0–15). You manipulate this buffer directly or through the provided drawing primitives, then call `GUpdateImage` to flush changes to the screen. A dirty-tracking mechanism ensures only modified pixels are re-transferred on each update, keeping the operation efficient even for large canvases.
+
+---
+
+## GCreateImage
+
+```c
+void GCreateImage(int id, int x, int y, int w, int h);
+```
+
+Allocates a new image element and all of its backing storage: a `w × h` byte pixel buffer (zero-initialized), a matching "previous frame" buffer used for dirty tracking, and an `XImage` for X11 compositing. Any existing element at `id` is freed first.
+
+<ParamField path="id" type="int" required>
+  Element slot index. If an element already exists at this ID it is freed and replaced.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the image's top-left corner within the window.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the image's top-left corner within the window.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the image canvas in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the image canvas in pixels.
+</ParamField>
+
+<Note>
+  The pixel buffer is zero-initialized, so all pixels start at palette index 0 (typically black, depending on the active palette). The XImage data buffer is also zero-initialized, meaning no `GUpdateImage` call is needed before the first render — the image will simply appear as solid color 0 until you paint it.
+</Note>
+
+---
+
+## GGetImageData
+
+```c
+unsigned char* GGetImageData(int id);
+```
+
+Returns a pointer to the element's raw pixel buffer. The buffer is `w * h` bytes, laid out in row-major order: pixel at column `x`, row `y` is at offset `y * w + x`. Write palette indices (0–15) into this buffer, then call `GUpdateImage` to push the changes to the screen.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the image to access.
+</ParamField>
+
+**Return value:** A `unsigned char*` pointing to the first byte of the `w * h` pixel buffer. The pointer remains valid until the element is deleted.
+
+<Warning>
+  Writing values outside the range 0–15 into the pixel buffer produces undefined rendering results — palette lookups index into a 16-entry color table.
+</Warning>
+
+---
+
+## GUpdateImage
+
+```c
+void GUpdateImage(int id);
+```
+
+Transfers modified pixels from the pixel buffer into the underlying `XImage` by scanning every pixel and comparing it against the previous-frame buffer. Only pixels that differ are updated, which makes repeated partial updates efficient. After the transfer, the previous-frame buffer is updated to match.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the image to update.
+</ParamField>
+
+<Note>
+  `GUpdateImage` only writes to the `XImage` in memory. The result becomes visible on screen during the next `GRenderWindow` call (or `GSimpleWindowLoop` frame), which blits the `XImage` onto the window's back buffer.
+</Note>
+
+---
+
+## GClearImage
+
+```c
+void GClearImage(int id, int c);
+```
+
+Fills the entire pixel buffer with the single color index `c` using `memset`. This is faster than manually looping over the buffer.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the image to clear.
+</ParamField>
+
+<ParamField path="c" type="int" required>
+  Palette index (0–15) to fill every pixel with.
+</ParamField>
+
+<Tip>
+  After clearing, call `GUpdateImage` to flush the blank canvas to the screen. Or, call `GClearImage` at the start of every frame followed by your draw calls and a single `GUpdateImage` at the end — this gives a clean double-buffer–style workflow.
+</Tip>
+
+---
+
+## GRedrawAllImages
+
+```c
+void GRedrawAllImages(void);
+```
+
+Forces every image element in the scene to fully retransfer its pixel data on the next render pass, bypassing the dirty-tracking optimization. This is called automatically by the palette functions (`GPaletteModify`, `GPaletteReset`) whenever the palette changes, because existing `XImage` pixel data encodes the old color values.
+
+<Note>
+  You rarely need to call `GRedrawAllImages` directly. It is provided for cases where the X11 pixel cache may have become stale through external means.
+</Note>
+
+---
+
+## Drawing Primitives
+
+The following functions draw directly into an image element's pixel buffer. They do **not** call `GUpdateImage` — you must call `GUpdateImage` yourself after finishing all draw operations for a frame. All coordinates are relative to the image's own top-left corner (0, 0), not the window.
+
+### GPrimitiveRect
+
+```c
+void GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+Draws a rectangle into the image's pixel buffer. The border is drawn on the outermost ring of pixels; the fill covers everything inside. Pass `-1` for either `fg` or `bg` to skip that rendering layer. Pixels outside the image bounds are clipped silently.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the target image.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the rectangle's top-left corner, relative to the image canvas.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the rectangle's top-left corner, relative to the image canvas.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="fg" type="int" required>
+  Palette index for the border. Pass `-1` to skip the border.
+</ParamField>
+
+<ParamField path="bg" type="int" required>
+  Palette index for the interior fill. Pass `-1` to skip the fill.
+</ParamField>
+
+---
+
+### GPrimitiveCircle
+
+```c
+void GPrimitiveCircle(int id, int cx, int cy, int r, int fg, int bg);
+```
+
+Draws a circle into the image buffer using a filled raster scan. The border is one pixel wide (pixels whose squared distance from the center is between `(r-1)²` and `r²` inclusive). Pass `-1` for `fg` or `bg` to skip the border or fill. Pixels outside the image bounds are clipped.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the target image.
+</ParamField>
+
+<ParamField path="cx" type="int" required>
+  X coordinate of the circle's center, relative to the image canvas.
+</ParamField>
+
+<ParamField path="cy" type="int" required>
+  Y coordinate of the circle's center, relative to the image canvas.
+</ParamField>
+
+<ParamField path="r" type="int" required>
+  Radius of the circle in pixels.
+</ParamField>
+
+<ParamField path="fg" type="int" required>
+  Palette index for the border ring. Pass `-1` to skip the border (filled circle only).
+</ParamField>
+
+<ParamField path="bg" type="int" required>
+  Palette index for the interior fill. Pass `-1` to draw only the border ring.
+</ParamField>
+
+---
+
+### GPrimitiveLine
+
+```c
+void GPrimitiveLine(int id, int x1, int y1, int x2, int y2, int color);
+```
+
+Draws a straight line from `(x1, y1)` to `(x2, y2)` using incremental floating-point stepping. The number of steps equals `max(|dx|, |dy|)`, and each step advances by fractional amounts in both axes, with coordinates rounded to the nearest pixel. Pixels outside the image bounds are skipped.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the target image.
+</ParamField>
+
+<ParamField path="x1" type="int" required>
+  X coordinate of the line's start point.
+</ParamField>
+
+<ParamField path="y1" type="int" required>
+  Y coordinate of the line's start point.
+</ParamField>
+
+<ParamField path="x2" type="int" required>
+  X coordinate of the line's end point.
+</ParamField>
+
+<ParamField path="y2" type="int" required>
+  Y coordinate of the line's end point.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  Palette index (0–15) for the line color.
+</ParamField>
+
+---
+
+### GPrimitiveSprite
+
+```c
+void GPrimitiveSprite(int id, int sx, int sy, int color, const char* sprite, int scale);
+```
+
+Draws a monochrome sprite encoded as a compact RLE string at position `(sx, sy)`. Each foreground pixel is painted with `color`; transparent pixels write palette index `0`. The `scale` parameter multiplies every pixel into a `scale × scale` block, enabling integer-scaled sprites without separate assets.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the target image.
+</ParamField>
+
+<ParamField path="sx" type="int" required>
+  X coordinate of the sprite's top-left corner, relative to the image canvas.
+</ParamField>
+
+<ParamField path="sy" type="int" required>
+  Y coordinate of the sprite's top-left corner, relative to the image canvas.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  Palette index (0–15) used to paint foreground (`#`) pixels.
+</ParamField>
+
+<ParamField path="sprite" type="const char*" required>
+  Null-terminated RLE sprite string. See the format reference below.
+</ParamField>
+
+<ParamField path="scale" type="int" required>
+  Pixel scale factor. `1` = 1:1, `2` = 2×2 blocks per logical pixel, etc.
+</ParamField>
+
+#### Sprite String Format
+
+The sprite string is processed character-by-character from left to right. An optional numeric prefix accumulates a repeat count before a command character.
+
+| Token | Meaning |
+|-------|---------|
+| `#` | Draw one foreground pixel (color = `color` parameter), advance X by `scale`. |
+| `.` | Draw one transparent pixel (palette index 0), advance X by `scale`. |
+| `$` | Newline: reset X to `sx`, advance Y by `scale` (multiplied by any preceding count). |
+| `>` | Skip right: preceded by a count `N`, advance X by `N × scale` without drawing. |
+| `N<char>` | Repeat `<char>` N times (e.g. `5#` = five foreground pixels). |
+| `N[...]` | Repeat the group `[...]` N times (e.g. `3[#.]` = `#.#.#.`). Groups may nest. |
+| `!` | End of sprite — processing stops here. |
+
+<Note>
+  The `>` skip token consumes the numeric prefix as a pixel-count multiplied by `scale`. For example, `4>` skips 4 logical pixels (i.e., `4 * scale` actual pixels to the right).
+</Note>
+
+<Tip>
+  Terminate every sprite string with `!` to make the end of data explicit and guard against accidentally processing trailing characters in the string literal.
+</Tip>
+
+---
+
+## Example
+
+The example below creates a 128×128 image canvas, clears it to a dark background, draws a filled circle and a diagonal line, then updates the image each frame. A second primitive call adds a hollow rectangle border.
+
+```c
+#include "libLWXGL.h"
+
+#define ID_CANVAS 0
+
+void draw_frame(int frame) {
+    /* Clear to dark background (palette index 1) */
+    GClearImage(ID_CANVAS, 1);
+
+    /* Filled circle: center (64,64), radius 40.
+       fg=10 (bright green border), bg=2 (dark green fill) */
+    GPrimitiveCircle(ID_CANVAS, 64, 64, 40, 10, 2);
+
+    /* Diagonal line across the full canvas: white (index 15) */
+    GPrimitiveLine(ID_CANVAS, 0, 0, 127, 127, 15);
+
+    /* Hollow rectangle border around the canvas edge.
+       fg=7 (light gray), bg=-1 (no fill) */
+    GPrimitiveRect(ID_CANVAS, 0, 0, 128, 128, 7, -1);
+
+    /* Flush dirty pixels to the XImage */
+    GUpdateImage(ID_CANVAS);
+}
+
+int main(void) {
+    GCreateWindow(256, 256, "Image Demo", 0);
+
+    /* 128x128 canvas positioned at (64, 64) in the window */
+    GCreateImage(ID_CANVAS, 64, 64, 128, 128);
+
+    GSimpleWindowLoop(60, draw_frame);
+    GDeleteWindow();
+    return 0;
+}
+```

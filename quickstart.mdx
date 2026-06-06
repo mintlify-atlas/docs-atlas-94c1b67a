@@ -1,47 +1,142 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with LWXGL: Build Your First Window"
+sidebarTitle: "Quickstart"
+description: "Learn how to open an X11 window with LWXGL, add a button and text label, and run a fixed-FPS event loop in under 30 lines of C."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+This guide walks you through writing a minimal LWXGL application from scratch. By the end you will have a 400×300 pixel X11 window containing a text label and a clickable button, running at a steady 60 frames per second. Everything shown here — opening the window, creating elements, running the loop, and cleaning up — uses the core LWXGL API and compiles to a single C source file.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  ### Include the header
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+  Add `#include <libLWXGL.h>` at the top of your source file. The header is installed to `/usr/local/include` by `make install`, so no additional include path is needed with a standard toolchain.
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
+  ```c
+  #include <libLWXGL.h>
+  ```
+
+  The header wraps every declaration in an `extern "C"` block, which means it is safe to include from both C and C++ translation units without any extra effort on your part.
+
+  ---
+
+  ### Open a window
+
+  Call `GCreateWindow` to connect to the X11 display, allocate the 16 palette colors, create the window, and set up the double-buffered Pixmap backbuffer.
+
+  ```c
+  int result = GCreateWindow(400, 300, "Hello LWXGL", 0);
+  ```
+
+  | Parameter | Type | Description |
+  |---|---|---|
+  | `w` | `int` | Window width in pixels. The window is fixed at this size. |
+  | `h` | `int` | Window height in pixels. The window is fixed at this size. |
+  | `name` | `const char*` | Title bar text. |
+  | `bgcol` | `int` | Background palette index (0–15) used to clear the frame each tick. |
+
+  `GCreateWindow` returns `0` on success. Non-zero return codes indicate a failure: `1` means the X display could not be opened, `2` means the `9x15` bitmap font was not found, and `3` means a window is already open.
+
+  ---
+
+  ### Create UI elements
+
+  Elements are created by ID. Choose any non-negative integer; if you reuse an ID the previous element is deleted automatically. Elements are drawn in ascending ID order each frame.
+
+  Add a text label at position (20, 30) using palette index 15 (white):
+
+  ```c
+  GCreateText(0, 20, 30, 15, "Hello, LWXGL!");
+  ```
+
+  Add a button at position (20, 60) with size 120×30. The three color arguments (`u`, `hvr`, `p`) are packed bytes — low nibble is the fill index, high nibble is the border index — for the unpressed, hover, and pressed states respectively:
+
+  ```c
+  GCreateButton(1, 20, 60, 120, 30, 0x78, 0x79, 0x71, "Click Me", on_click);
+  ```
+
+  The `on_click` argument is a `void (*)(void)` callback invoked automatically by the event system when the user releases the left mouse button inside the button's bounds.
+
+  ---
+
+  ### Run the loop and clean up
+
+  `GSimpleWindowLoop` blocks until the window receives a close event (or `Ctrl+Escape` is pressed). Pass the desired frame rate cap and an optional per-tick callback (use `NULL` if you don't need one). After the loop returns, call `GTerminateWindow` to release all X11 resources.
+
+  ```c
+  GSimpleWindowLoop(60, NULL);
+  GTerminateWindow();
+  ```
+
+  Each iteration of the loop calls `GHandleWindowEvents` (processes the X event queue) followed by `GRenderWindow` (clears the backbuffer, draws all elements, flips to screen), then sleeps for the remainder of the frame budget to stay near the target FPS.
+
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Complete Example
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+```c hello.c
+#include <libLWXGL.h>
+#include <stdio.h>
+
+void on_click(void) {
+    printf("Button clicked!\n");
+}
+
+int main(void) {
+    /* Create a 400x300 window with a black (index 0) background */
+    if (GCreateWindow(400, 300, "Hello LWXGL", 0) != 0) {
+        fprintf(stderr, "Failed to create window\n");
+        return 1;
+    }
+
+    /* Text label: id=0, position (20, 30), color index 15 (white) */
+    GCreateText(0, 20, 30, 15, "Hello, LWXGL!");
+
+    /* Button: id=1, pos (20,60), size 120x30
+       colors packed: unpressed=0x78 (fill=8, border=7)
+                      hover=0x79 (fill=9, border=7)
+                      pressed=0x71 (fill=1, border=7) */
+    GCreateButton(1, 20, 60, 120, 30, 0x78, 0x79, 0x71, "Click Me", on_click);
+
+    /* Run at 60 FPS until the window is closed */
+    GSimpleWindowLoop(60, NULL);
+
+    GTerminateWindow();
+    return 0;
+}
+```
+
+## Compile and Run
+
+```bash
+gcc -o hello hello.c -lLWXGL -lX11
+./hello
+```
+
+## Understanding Color Encoding
+
+LWXGL addresses colors by **palette index 0–15**. The default palette mirrors the classic CGA 16-color set:
+
+| Index | Name | Index | Name |
+|---|---|---|---|
+| 0 | Black | 8 | Dark Gray |
+| 1 | Dark Blue | 9 | Light Blue |
+| 2 | Dark Green | 10 | Light Green |
+| 3 | Dark Cyan | 11 | Light Cyan |
+| 4 | Dark Red | 12 | Light Red |
+| 5 | Dark Magenta | 13 | Light Magenta |
+| 6 | Orange | 14 | Yellow |
+| 7 | Light Gray | 15 | White |
+
+For elements that carry two color roles — a **border** and a **fill** — both indices are packed into a single `int` value as one byte:
+
+- **Low nibble** (bits 3–0) → fill color index
+- **High nibble** (bits 7–4) → border color index
+
+For example, `0x78` decodes as: fill = `8` (dark gray), border = `7` (light gray). Passing `0x78` as the unpressed color to `GCreateButton` renders a dark-gray button body with a light-gray outline when the mouse is elsewhere. This encoding applies to the `u`, `hvr`, and `p` parameters of `GCreateButton`, the `u` and `hvr` parameters of `GCreateInput`, and the `cb_col` parameter of `GCreateCheckbox`.
+
+The palette itself is mutable at runtime: use `GPaletteModify(idx, r, g, b, redraw)` to change any slot, `GPaletteQuery(idx, &r, &g, &b)` to read the current RGB values back from X11, and `GPaletteReset()` to restore all 16 slots to their defaults.
+
+<Tip>
+  Ready to go further? The Guides section covers each element type in depth, explains how to use the image canvas and drawing primitives for pixel-level rendering, and walks through the full event system including keyboard polling with `GQueryKeyboard` and `GQueryKeyDown`.
 </Tip>

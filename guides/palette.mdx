@@ -1,0 +1,140 @@
+---
+title: "Using and Modifying the LWXGL 16-Color Palette"
+sidebarTitle: "Palette"
+description: "LWXGL uses a fixed 16-color indexed palette. Learn the default colors, how to query and modify palette entries at runtime, and how colors are referenced throughout the API."
+---
+
+Every color in LWXGL is referenced by a **palette index** from 0 to 15. When `GCreateWindow` runs, all 16 colors are allocated upfront as X11 colormap entries using `XAllocColor`. From that point on, every drawing call — text, buttons, primitives, image pixels — uses one of these 16 indices rather than raw RGB values. This indexed approach keeps the API simple and enables instant global theme changes: modifying a single palette slot immediately affects every element that references that index.
+
+---
+
+## Default Palette
+
+The table below lists the 16 default colors as they are defined in the LWXGL source. These values are loaded at startup and can be changed at runtime with `GPaletteModify`.
+
+| Index | Name | R | G | B |
+|-------|------|---|---|---|
+| 0 | Black | 0 | 0 | 0 |
+| 1 | Dark Blue | 3 | 3 | 173 |
+| 2 | Dark Green | 0 | 170 | 0 |
+| 3 | Dark Cyan | 0 | 168 | 168 |
+| 4 | Dark Red | 186 | 6 | 6 |
+| 5 | Dark Magenta | 168 | 0 | 168 |
+| 6 | Orange | 230 | 126 | 34 |
+| 7 | Light Gray | 168 | 168 | 168 |
+| 8 | Dark Gray | 85 | 87 | 83 |
+| 9 | Light Blue | 87 | 87 | 255 |
+| 10 | Light Green | 85 | 255 | 85 |
+| 11 | Light Cyan | 96 | 240 | 240 |
+| 12 | Light Red | 255 | 85 | 85 |
+| 13 | Light Magenta | 240 | 84 | 240 |
+| 14 | Yellow | 244 | 242 | 54 |
+| 15 | White | 255 | 255 | 255 |
+
+<Tip>
+  When designing UI colors, treat the 16-color palette like a CGA-style fixed set and build elements around index 0 (black) and index 15 (white) for maximum contrast. Indices 7 (light gray) and 8 (dark gray) are useful for secondary surfaces and disabled-state fills.
+</Tip>
+
+---
+
+## Querying a Palette Entry
+
+```c
+void GPaletteQuery(int idx, unsigned char *r, unsigned char *g, unsigned char *b);
+```
+
+Reads back the current RGB values for palette slot `idx` by querying the X server's colormap directly. The results reflect any previous `GPaletteModify` calls, not the compile-time defaults.
+
+```c
+unsigned char r, g, b;
+GPaletteQuery(1, &r, &g, &b);
+printf("Palette slot 1: rgb(%d, %d, %d)\n", r, g, b);
+```
+
+---
+
+## Modifying a Palette Entry
+
+```c
+void GPaletteModify(int idx, unsigned char r, unsigned char g, unsigned char b, int redraw);
+```
+
+Replaces the X11 color allocation for slot `idx` with the new RGB values. The old pixel value is freed from the colormap and a new one is allocated in its place.
+
+| Parameter | Description |
+|-----------|-------------|
+| `idx` | Palette index to replace (0–15) |
+| `r`, `g`, `b` | New color components (0–255 each) |
+| `redraw` | Pass `1` to call `GRedrawAllImages()` immediately, `0` to defer |
+
+Set `redraw` to `1` when you want image canvases to reflect the new color right away. Set it to `0` when you are changing multiple palette slots in a single frame — call `GRedrawAllImages()` manually after the last change to avoid redundant work.
+
+```c
+/* Replace dark blue (index 1) with a teal, and immediately redraw all images */
+GPaletteModify(1, 0, 120, 200, 1);
+```
+
+<Note>
+  Modifying a palette entry affects how **all** image pixels that use that index render. This includes every `GCreateImage` canvas currently in the element table. It does not affect the stored byte values in the pixel buffers — only the X11 color that those index values map to.
+</Note>
+
+---
+
+## Resetting the Palette
+
+```c
+void GPaletteReset(void);
+```
+
+Frees all 16 current color allocations and reallocates them using the original compile-time default values shown in the table above. Always calls `GRedrawAllImages()` after restoring the palette.
+
+```c
+/* Undo any runtime palette changes */
+GPaletteReset();
+```
+
+---
+
+## How Colors Are Used in the API
+
+Colors appear in three distinct forms across LWXGL's API:
+
+<CardGroup cols={3}>
+  <Card title="Single palette index" icon="palette">
+    A plain integer 0–15 representing one color directly. Used by `GCreateText` (text color), image primitive functions (`GPrimitiveLine`, `GPrimitiveCircle` fill/border, etc.), `GClearImage`, `GPrimitiveSprite`, and the `bgcol` parameter of `GCreateWindow`.
+  </Card>
+  <Card title="Nibble-packed byte" icon="grip">
+    A single `int` where the **low nibble** (bits 0–3) is the fill/background palette index and the **high nibble** (bits 4–7) is the border/outline palette index. Used by `GCreateButton` (unpressed/hover/pressed), `GCreateInput` (inactive/hover), `GCreateCheckbox` (cb\_col), and `GCreateRect` — but note that `GCreateRect` accepts two separate plain indices for `fg` and `bg` rather than a packed byte.
+  </Card>
+  <Card title="Background color" icon="square">
+    The `bgcol` parameter passed to `GCreateWindow` is a single palette index used to clear the window background at the start of every `GRenderWindow` call.
+  </Card>
+</CardGroup>
+
+---
+
+## Runtime Palette Swap Example
+
+The following example changes several palette slots to create a "night mode" theme, batching the redraws into a single call:
+
+```c
+void apply_night_mode(void) {
+    /* Replace black (0) with a very dark navy */
+    GPaletteModify(0, 10, 10, 30, 0);
+
+    /* Replace white (15) with a warm off-white */
+    GPaletteModify(15, 230, 220, 200, 0);
+
+    /* Replace light gray (7) with a muted slate */
+    GPaletteModify(7, 100, 110, 120, 0);
+
+    /* Flush all image canvases once, after all changes */
+    GRedrawAllImages();
+}
+```
+
+To revert to the default colors at any time:
+
+```c
+GPaletteReset();
+```

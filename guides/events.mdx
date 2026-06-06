@@ -1,0 +1,195 @@
+---
+title: "Handling Keyboard, Mouse, and Window Events in LWXGL"
+sidebarTitle: "Events"
+description: "Attach event callbacks and poll input state in LWXGL. Covers keyboard, mouse-click, window-close events, and the special key constants."
+---
+
+LWXGL offers two complementary input models that you can use independently or together. The **callback model** lets you attach a function that LWXGL calls automatically when an event fires — useful for action-based responses like pressing a key to jump or clicking a point to place an object. The **polling model** lets you query the current state of the mouse and keyboard on demand each frame — ideal for smooth, continuous movement where you need to know whether a key is *still held* rather than when it was *first pressed*.
+
+<Warning>
+  Key callbacks are **not** invoked for <kbd>F12</kbd> (reserved for the built-in debug overlay toggle) or <kbd>Ctrl</kbd>+<kbd>Escape</kbd> (reserved for emergency window close). Do not rely on receiving those key codes in your callback.
+</Warning>
+
+---
+
+## Keyboard Callbacks
+
+```c
+void GEventAttachKey(void (*Key)(int key));
+```
+
+Registers a function to be called whenever a key is pressed. The callback receives the key as an `int`:
+
+- For printable ASCII keys, the value is the standard ASCII code (e.g. `'a'` = 97, `' '` = 32).
+- For special keys, LWXGL maps them to constants defined in `libLWXGL.h`:
+
+| Constant | Value | Key |
+|----------|-------|-----|
+| `LWXGL_KEY_LEFT` | `170` | Left arrow |
+| `LWXGL_KEY_RIGHT` | `171` | Right arrow |
+| `LWXGL_KEY_UP` | `172` | Up arrow |
+| `LWXGL_KEY_DOWN` | `173` | Down arrow |
+| `LWXGL_KEY_FN` | `150` | Base value (not a key itself) |
+| `LWXGL_KEY_FN + 1` | `151` | F1 |
+| `LWXGL_KEY_FN + 2` | `152` | F2 |
+| `…` | `…` | … |
+| `LWXGL_KEY_FN + 11` | `161` | F11 |
+
+Function keys F1–F11 are therefore `LWXGL_KEY_FN + N` where N is the function-key number. F12 (`LWXGL_KEY_FN + 12` = `162`) is reserved and will not reach your callback.
+
+```c
+void on_key(int key) {
+    if (key == LWXGL_KEY_LEFT)  { /* move left  */ }
+    if (key == LWXGL_KEY_RIGHT) { /* move right */ }
+    if (key == LWXGL_KEY_UP)    { /* move up    */ }
+    if (key == LWXGL_KEY_DOWN)  { /* move down  */ }
+    if (key == 'q')             { GDeleteWindow(); }
+    if (key == LWXGL_KEY_FN + 1) { /* F1 pressed */ }
+}
+
+GEventAttachKey(on_key);
+```
+
+Only one key callback can be registered at a time. Calling `GEventAttachKey` again replaces the previous callback.
+
+---
+
+## Mouse Click Callbacks
+
+```c
+void GEventAttachClick(void (*Click)(int x, int y, int btn));
+```
+
+Registers a function called on every mouse button **release** event. Parameters:
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Window-relative coordinates of the cursor at the time of release |
+| `btn` | X11 button number: `1` = left, `2` = middle, `3` = right |
+
+```c
+void on_click(int x, int y, int btn) {
+    if (btn == 1) {
+        /* left-click at (x, y) */
+    }
+}
+
+GEventAttachClick(on_click);
+```
+
+<Info>
+  The click callback is **not** invoked when a button or checkbox element consumed the click. LWXGL checks elements in ID order on each release event and returns early if a hit is found, so the user callback only fires for clicks on bare window space.
+</Info>
+
+---
+
+## Window Close Callback
+
+```c
+void GEventAttachDelete(int (*on_exit)(void));
+```
+
+Registers a function called when the user presses the window manager's close button (or when `GDeleteWindow()` is called programmatically). The callback must return:
+
+- `1` — confirm the close; `GWindowShouldClose()` will return `1` and the loop will exit.
+- `0` — cancel the close; the window stays open.
+
+If no delete callback is registered, the window closes immediately without prompting.
+
+```c
+int on_close(void) {
+    /* show a "save your work?" dialog, or just confirm */
+    return 1; /* 1 = allow close, 0 = cancel */
+}
+
+GEventAttachDelete(on_close);
+```
+
+---
+
+## Polling Mouse State
+
+```c
+void GQueryMouse(int *x, int *y, int *btn);
+```
+
+Fills the three output pointers with the current mouse state at the moment of the call. This is updated continuously by `GHandleWindowEvents`.
+
+| Output | Description |
+|--------|-------------|
+| `*x`, `*y` | Cursor position in window coordinates. Both are `-1` when the cursor is outside the window |
+| `*btn` | Currently held button number (1/2/3), or `0` if no button is pressed |
+
+```c
+void per_frame(int tick) {
+    int mx, my, mbtn;
+    GQueryMouse(&mx, &my, &mbtn);
+    if (mx != -1 && mbtn == 1) {
+        /* left button held at (mx, my) */
+    }
+}
+```
+
+---
+
+## Polling Keyboard State
+
+LWXGL tracks up to 8 simultaneously held keys and exposes them through two polling functions.
+
+<Tabs>
+  <Tab title="GQueryKeyDown (single key)">
+    ```c
+    int GQueryKeyDown(int ch);
+    ```
+
+    Returns `1` if the key `ch` is currently held down, `0` otherwise. `ch` can be an ASCII value or any of the `LWXGL_KEY_*` constants. This is the most ergonomic option for per-frame movement logic.
+
+    ```c
+    void per_frame(int tick) {
+        if (GQueryKeyDown(LWXGL_KEY_UP))    { /* move up    */ }
+        if (GQueryKeyDown(LWXGL_KEY_DOWN))  { /* move down  */ }
+        if (GQueryKeyDown(LWXGL_KEY_LEFT))  { /* move left  */ }
+        if (GQueryKeyDown(LWXGL_KEY_RIGHT)) { /* move right */ }
+        if (GQueryKeyDown(' '))             { /* space held */ }
+    }
+    ```
+  </Tab>
+  <Tab title="GQueryKeyboard (all held keys)">
+    ```c
+    unsigned char *GQueryKeyboard(void);
+    ```
+
+    Returns a pointer to an internal `unsigned char[8]` array containing the key codes of all currently held keys. Slots that are not in use hold `0`. Useful when you need to inspect the full set of held keys at once.
+
+    ```c
+    void per_frame(int tick) {
+        unsigned char *keys = GQueryKeyboard();
+        for (int i = 0; i < 8; i++) {
+            if (keys[i] == LWXGL_KEY_UP)   { /* up held   */ }
+            if (keys[i] == LWXGL_KEY_DOWN) { /* down held */ }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Event Dispatch Order
+
+Understanding the order in which LWXGL dispatches events prevents surprises when mixing callbacks with interactive elements:
+
+<Steps>
+  <Step title="Button and checkbox elements are checked first">
+    On a mouse-button release, LWXGL iterates over all elements in ID order. If the cursor is inside a button or checkbox, that element's handler fires and the event loop returns early — the user click callback is **not** called.
+  </Step>
+  <Step title="User click callback fires for unhandled clicks">
+    Only if no interactive element consumed the click does `GEventAttachClick`'s callback receive the event.
+  </Step>
+  <Step title="Input elements consume key events first">
+    On a key press, if the cursor is hovering over a text input element, that input receives the character and the key callback is **not** called.
+  </Step>
+  <Step title="User key callback fires for unhandled keys">
+    Key presses not consumed by an input element are forwarded to the `GEventAttachKey` callback.
+  </Step>
+</Steps>

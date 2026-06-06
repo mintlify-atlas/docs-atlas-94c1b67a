@@ -1,0 +1,77 @@
+---
+title: "Install LWXGL on Linux from Source"
+sidebarTitle: "Installation"
+description: "Build libLWXGL.so from source with make and install the shared library and header system-wide in two commands."
+---
+
+LWXGL ships as a single shared object — `libLWXGL.so` — built directly from source with a one-line `g++` invocation wrapped in a `Makefile`. There are no pre-built binaries; you compile it on your own machine and install it system-wide so that any project on the same machine can link against `-lLWXGL`. The build produces a position-independent shared library with hidden visibility by default, meaning only the functions explicitly tagged with `__attribute__((visibility("default")))` are part of the public ABI.
+
+## Prerequisites
+
+Before building, make sure the following are available on your system:
+
+- **GCC / G++ with C++11 support** — the library source uses `<chrono>`, `<thread>`, `<vector>`, and other C++11 standard library features. Any GCC version shipped with a modern Linux distribution (GCC 5 or later) works.
+- **libX11 development headers** — required at compile time. On Debian/Ubuntu: `sudo apt install libx11-dev`. On Fedora/RHEL: `sudo dnf install libX11-devel`.
+- **The `9x15` bitmap font** — loaded at runtime when a window is opened. On Debian/Ubuntu it is provided by the `xfonts-base` package: `sudo apt install xfonts-base`. Without this font `GCreateWindow` will return error code `2` and refuse to open a window.
+
+## Build
+
+Clone the repository and run `make build`:
+
+```bash
+git clone https://github.com/dressedalarm184/lwxgl.git
+cd lwxgl
+make build
+```
+
+The `make build` target runs the following command:
+
+```bash
+g++ -fPIC -shared -O2 -o libLWXGL.so src/main.cc -lX11 -fvisibility=hidden
+```
+
+| Flag | Purpose |
+|---|---|
+| `-fPIC` | Generate position-independent code required for shared libraries. |
+| `-shared` | Produce a shared object rather than an executable. |
+| `-O2` | Enable standard optimisations. |
+| `-lX11` | Link against the Xlib runtime. |
+| `-fvisibility=hidden` | Hide all symbols by default; only functions marked `EXPORT` (`__attribute__((visibility("default")))`) are visible to consumers. |
+
+After a successful build, `libLWXGL.so` appears in the repository root.
+
+## Install
+
+```bash
+make install
+```
+
+The `make install` target performs the following three steps:
+
+1. Copies `libLWXGL.so` to `/usr/local/lib`.
+2. Copies `src/libLWXGL.h` to `/usr/local/include`.
+3. Runs `ldconfig` to refresh the dynamic linker cache so the new library is found by name (`-lLWXGL`) at link time and at runtime.
+
+<Warning>
+  `make install` uses `sudo` for each step and writes files into system directories (`/usr/local/lib` and `/usr/local/include`). Make sure you trust the source before running it, and that you have `sudo` privileges on the target machine.
+</Warning>
+
+## Linking Your Project
+
+Once the library is installed, compile any C program against it by passing `-lLWXGL -lX11` to GCC:
+
+```bash gcc
+gcc -o my_app my_app.c -lLWXGL -lX11
+```
+
+For C++ projects, use G++ instead:
+
+```bash g++
+g++ -o my_app my_app.cpp -lLWXGL -lX11
+```
+
+Both commands work because the public header `libLWXGL.h` wraps all declarations in an `extern "C"` block, making the library callable from either language without name-mangling issues.
+
+<Tip>
+  LWXGL is compiled with `-fvisibility=hidden`, which means the shared object exports only the symbols explicitly annotated with `__attribute__((visibility("default")))` in the source. This keeps the public ABI minimal and prevents accidental linkage against internal helpers. You can inspect the exported symbols at any time with `nm -D libLWXGL.so | grep ' T '`.
+</Tip>

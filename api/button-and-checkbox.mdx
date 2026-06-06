@@ -1,0 +1,199 @@
+---
+title: "Button and Checkbox Element API — LWXGL"
+sidebarTitle: "Button & Checkbox"
+description: "API reference for GCreateButton and GCreateCheckbox: interactive click targets and toggles with nibble-packed color states and callbacks."
+---
+
+LWXGL's interactive elements — buttons and checkboxes — respond to mouse hover and click events evaluated each frame during `GRenderWindow`. Both element types use a **nibble-packed color byte** to express two color roles (fill and border) in a single integer argument, keeping the API compact while still supporting distinct visual states.
+
+---
+
+## Nibble-Packed Color Bytes
+
+Several functions accept a single `int` whose low 4 bits (nibble) encode the **fill color index** and whose high 4 bits encode the **border color index**. This is referred to throughout the docs as a *nibble-packed color byte*.
+
+| Bits | Role | Extractor macro |
+|------|------|-----------------|
+| `[3:0]` — low nibble | Fill (background) color index | `L(b)` |
+| `[7:4]` — high nibble | Border (outline) color index | `H(b)` |
+
+**Example:** the value `0x78` has low nibble `8` (dark gray fill) and high nibble `7` (light gray border).
+
+```c
+/* Construct a nibble-packed byte manually */
+int color_byte = (border_index << 4) | fill_index;
+
+/* Example: border = palette index 7, fill = palette index 8 */
+int u = (7 << 4) | 8;   /* 0x78 */
+```
+
+<Tip>
+  Palette indices 0–15 each fit in 4 bits. If you need the same color for both border and fill, mirror the nibble: `(idx << 4) | idx`.
+</Tip>
+
+---
+
+## GCreateButton
+
+```c
+void GCreateButton(int id, int x, int y, int w, int h, int u, int hvr, int p, const char* label, void (*onclick)(void));
+```
+
+Creates a clickable button element, or replaces any existing element at the given `id`. The button renders differently depending on mouse state: the `u` colors are used when the cursor is outside the button, `hvr` when the cursor is hovering, and `p` while the left mouse button is held down. The `onclick` callback fires on left-click release while the cursor is inside the button bounds.
+
+<ParamField path="id" type="int" required>
+  Element slot index. If an element already exists at this ID it is freed and replaced.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the button's top-left corner.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the button's top-left corner.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the button in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the button in pixels.
+</ParamField>
+
+<ParamField path="u" type="int" required>
+  Nibble-packed color byte for the **unpressed / idle** state. Low nibble = fill index, high nibble = border index.
+</ParamField>
+
+<ParamField path="hvr" type="int" required>
+  Nibble-packed color byte for the **hover** state (cursor inside, not clicking). Low nibble = fill index, high nibble = border index.
+</ParamField>
+
+<ParamField path="p" type="int" required>
+  Nibble-packed color byte for the **pressed** state (cursor inside, left button held). Low nibble = fill index, high nibble = border index.
+</ParamField>
+
+<ParamField path="label" type="const char*" required>
+  Null-terminated string drawn centered inside the button. The pointer is stored directly — do not free or mutate the string after passing it.
+</ParamField>
+
+<ParamField path="onclick" type="void (*)(void)">
+  Function called when the user releases the left mouse button while the cursor is inside the button. Pass `NULL` for no callback.
+</ParamField>
+
+<Note>
+  Buttons are automatically suppressed while a modal dialog is open (`GQueryModalOpen()` returns non-zero). Hover and click states will not trigger, and `onclick` will not fire until the modal is dismissed.
+</Note>
+
+---
+
+## GCreateCheckbox
+
+```c
+void GCreateCheckbox(int id, int x, int y, int size, int cb_col, int txt_col, const char* label);
+```
+
+Creates a checkbox element, or replaces any existing element at the given `id`. A checkbox renders as a square box that toggles its checked state on each left-click. When checked, a filled inner square is drawn inside the box (4-pixel inset on each side). An optional text label is displayed to the right of the box.
+
+<ParamField path="id" type="int" required>
+  Element slot index. If an element already exists at this ID it is freed and replaced.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the checkbox square's top-left corner.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the checkbox square's top-left corner.
+</ParamField>
+
+<ParamField path="size" type="int" required>
+  Width and height of the checkbox square in pixels. The same value is used for both dimensions.
+</ParamField>
+
+<ParamField path="cb_col" type="int" required>
+  Nibble-packed color byte for the checkbox square. Low nibble = fill index, high nibble = border index. The checked indicator uses the same border color.
+</ParamField>
+
+<ParamField path="txt_col" type="int" required>
+  Single palette index (0–15) for the label text color. Unused if `label` is `NULL`.
+</ParamField>
+
+<ParamField path="label" type="const char*">
+  Null-terminated string displayed to the right of the checkbox box. Pass `NULL` to render the box with no accompanying label.
+</ParamField>
+
+<Note>
+  The checkbox starts **unchecked** (`checked = 0`) when first created. Calling `GCreateCheckbox` again on the same ID resets it to unchecked.
+</Note>
+
+---
+
+## GGetCheckbox
+
+```c
+int GGetCheckbox(int id);
+```
+
+Returns the current checked state of the checkbox at the given `id`.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the checkbox to query.
+</ParamField>
+
+**Return value:** `1` if the checkbox is currently checked, `0` if unchecked.
+
+<Warning>
+  Calling `GGetCheckbox` on an ID that does not hold a `CheckboxElement` (e.g. a button or text element) will read the wrong memory and produce undefined behavior. Always match the query to the element type.
+</Warning>
+
+---
+
+## Example
+
+The example below creates a submit button whose `onclick` handler reads a checkbox's state, plus a standalone checkbox for an "agree to terms" toggle. Per-frame logic is handled in the `on_every` callback passed to `GSimpleWindowLoop`.
+
+```c
+#include <stdio.h>
+#include "libLWXGL.h"
+
+#define ID_AGREE_CHECKBOX  0
+#define ID_SUBMIT_BUTTON   1
+
+void on_submit(void) {
+    int agreed = GGetCheckbox(ID_AGREE_CHECKBOX);
+    if (agreed) {
+        printf("Submitted with agreement.\n");
+    } else {
+        printf("Please agree to the terms first.\n");
+    }
+}
+
+void on_frame(int frame) {
+    /* Dim the button visually when the checkbox is unchecked.
+       Here we simply recreate it with a different color scheme —
+       in a real app you might track state and only recreate on change. */
+    (void)frame;
+}
+
+int main(void) {
+    GCreateWindow(400, 200, "Button & Checkbox Demo", 0);
+
+    /* Checkbox: size=16, cb_col=0x7F (border=7 light-gray, fill=15 white),
+       txt_col=15 (white label) */
+    GCreateCheckbox(ID_AGREE_CHECKBOX, 30, 60, 16, 0x7F, 15, "I agree to the terms");
+
+    /* Button: u=0x78 idle, hvr=0x89 hover, p=0x56 pressed */
+    GCreateButton(ID_SUBMIT_BUTTON,
+                  30, 100, 120, 28,
+                  (7 << 4) | 8,   /* u:   border=7, fill=8  */
+                  (8 << 4) | 9,   /* hvr: border=8, fill=9  */
+                  (5 << 4) | 6,   /* p:   border=5, fill=6  */
+                  "Submit",
+                  on_submit);
+
+    GSimpleWindowLoop(60, on_frame);
+    GDeleteWindow();
+    return 0;
+}
+```

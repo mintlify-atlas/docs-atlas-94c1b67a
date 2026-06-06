@@ -1,0 +1,203 @@
+---
+title: "UI Elements: Text, Buttons, Inputs, and More"
+sidebarTitle: "UI Elements"
+description: "Create and manage LWXGL UI elements by integer ID. Covers text labels, buttons, text inputs, checkboxes, and rectangle panels."
+---
+
+LWXGL manages all visible UI objects — text, buttons, inputs, checkboxes, rectangles, and image canvases — through a single flat element table indexed by user-assigned integer IDs. Every create call maps one ID to one element: if you create an element at an ID that is already in use, the existing element is silently destroyed first and replaced by the new one. This makes it straightforward to swap or update elements without tracking stale handles.
+
+<Tip>
+  Use sequential integer IDs starting from 0 (e.g. `0`, `1`, `2`, …) for the simplest management strategy. Reserve a consistent range for each category — for example, IDs 0–9 for labels, 10–19 for buttons, and 20+ for image canvases.
+</Tip>
+
+---
+
+## Color Encoding
+
+Several element types accept color parameters encoded as a **nibble-packed byte** — a single `int` where the two 4-bit halves each hold an independent palette index:
+
+| Bits | Nibble | Meaning |
+|------|--------|---------|
+| 3–0 (low) | `value & 0x0F` | Fill / background color index |
+| 7–4 (high) | `(value >> 4) & 0x0F` | Border / text color index |
+
+For example, `0x7F` encodes fill = `0xF` (15 = white) and border = `0x7` (7 = light gray).
+
+```c
+/* fill = palette index 0 (black), border = palette index 15 (white) */
+int col = 0xF0;
+
+/* fill = palette index 2 (dark green), border = palette index 7 (light gray) */
+int col = 0x72;
+```
+
+This packed format is used by `GCreateButton`, `GCreateInput`, `GCreateCheckbox`, and `GCreateRect`. Functions that only need a single color (such as `GCreateText`) accept a plain palette index instead.
+
+---
+
+## Text Labels
+
+```c
+void GCreateText(int id, int x, int y, int color, const char *text);
+```
+
+Renders a string at `(x, y)` using the built-in `9x15` bitmap font. `color` is a single palette index (0–15). The text can contain `\n` newline characters; each newline advances the drawing position down by 16 pixels.
+
+```c
+/* White label at (20, 40) */
+GCreateText(0, 20, 40, 15, "Hello, LWXGL!");
+
+/* Multi-line label */
+GCreateText(1, 20, 80, 14, "Line one\nLine two\nLine three");
+```
+
+---
+
+## Buttons
+
+```c
+void GCreateButton(int id, int x, int y, int w, int h,
+                   int unpressed, int hover, int pressed,
+                   const char *label, void (*onclick)(void));
+```
+
+Draws a labeled rectangle button. The three color parameters are each nibble-packed (low nibble = fill, high nibble = border) and are selected based on the current interaction state:
+
+| Parameter | When used |
+|-----------|-----------|
+| `unpressed` | Default state — mouse is not over the button |
+| `hover` | Mouse is hovering over the button |
+| `pressed` | Mouse button 1 is held down over the button |
+
+`onclick` is a function pointer called on left-click release. Pass `NULL` if you only need the visual without a callback.
+
+```c
+void on_start_click(void) {
+    /* begin game */
+}
+
+/* Button at (100, 200), 120×30 px */
+/* unpressed: fill=8 (dark gray), border=7 (light gray) = 0x78 */
+/* hover:     fill=7 (light gray), border=15 (white)    = 0xF7 */
+/* pressed:   fill=0 (black),      border=15 (white)    = 0xF0 */
+GCreateButton(10, 100, 200, 120, 30, 0x78, 0xF7, 0xF0, "Start", on_start_click);
+```
+
+---
+
+## Text Inputs
+
+```c
+void GCreateInput(int id, int x, int y, int w, int h,
+                  int inactive, int hover, int max);
+```
+
+Creates a single-line text input field. The two color parameters are nibble-packed (low = fill, high = border) and switch between `inactive` and `hover` depending on whether the cursor is over the field.
+
+| Parameter | Description |
+|-----------|-------------|
+| `w` | Width in pixels. Pass `-1` to auto-compute based on `max` characters |
+| `h` | Height in pixels |
+| `inactive` | Nibble-packed color when the cursor is not over the input |
+| `hover` | Nibble-packed color when the cursor is hovering (also activates typing) |
+| `max` | Maximum number of characters accepted (internal buffer is 128 bytes) |
+
+When the mouse cursor is hovering over the input, typed characters are appended to the buffer and backspace removes the last character. The field renders a blinking `_` cursor while active.
+
+Retrieve the current contents with `GGetInput`:
+
+```c
+char *GGetInput(int id);
+```
+
+```c
+/* Auto-width input, max 20 characters */
+/* inactive: fill=8, border=7 = 0x78  */
+/* hover:    fill=0, border=15 = 0xF0 */
+GCreateInput(20, 50, 120, -1, 24, 0x78, 0xF0, 20);
+
+/* Read back the entered text */
+char *name = GGetInput(20);
+```
+
+---
+
+## Checkboxes
+
+```c
+void GCreateCheckbox(int id, int x, int y, int size,
+                     int cb_col, int txt_col, const char *label);
+```
+
+Draws a square checkbox of `size × size` pixels, optionally followed by a text label. Clicking anywhere within the checkbox square toggles the checked state.
+
+| Parameter | Description |
+|-----------|-------------|
+| `size` | Width and height of the checkbox square in pixels |
+| `cb_col` | Nibble-packed color (low = fill, high = border) of the checkbox square |
+| `txt_col` | Single palette index for the label text color |
+| `label` | Label string drawn to the right of the checkbox. Pass `NULL` for no label |
+
+Read the current state (0 or 1) with `GGetCheckbox`:
+
+```c
+int GGetCheckbox(int id);
+```
+
+```c
+/* 16×16 checkbox: fill=8 (dark gray), border=15 (white), white label */
+GCreateCheckbox(30, 60, 300, 16, 0xF8, 15, "Enable sound");
+
+/* Later, in your per-frame callback: */
+if (GGetCheckbox(30)) {
+    /* sound is enabled */
+}
+```
+
+---
+
+## Rectangle Panels
+
+```c
+void GCreateRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+Draws a filled rectangle with an optional border. Unlike buttons, rects are purely decorative and receive no mouse interaction.
+
+| Parameter | Description |
+|-----------|-------------|
+| `fg` | Border color (single palette index). Pass `-1` to skip drawing the border |
+| `bg` | Fill color (single palette index). Pass `-1` to skip filling the interior |
+
+```c
+/* Solid dark panel, no border */
+GCreateRect(40, 0, 0, 200, 50, -1, 8);
+
+/* White border only, transparent fill */
+GCreateRect(41, 10, 10, 180, 30, 15, -1);
+
+/* Dark gray fill with white border */
+GCreateRect(42, 20, 60, 160, 40, 15, 8);
+```
+
+---
+
+## Deleting and Repositioning Elements
+
+<CardGroup cols={2}>
+  <Card title="GDeleteElement(id)" icon="trash">
+    Frees the element at the given ID and removes it from the render list. For image elements, this also destroys the associated `XImage` and frees both pixel buffers. The ID slot is set to `NULL` and can be reused immediately.
+
+    ```c
+    GDeleteElement(10); /* remove button at ID 10 */
+    ```
+  </Card>
+  <Card title="GElemModifyBounds(id, x, y, w, h)" icon="arrows-up-down-left-right">
+    Moves and/or resizes an existing element in-place. Changes take effect on the next rendered frame. Note that for image elements the underlying pixel buffer is not reallocated — only the draw position and render dimensions change.
+
+    ```c
+    /* Slide a button to a new position */
+    GElemModifyBounds(10, 200, 300, 120, 30);
+    ```
+  </Card>
+</CardGroup>

@@ -1,0 +1,186 @@
+---
+title: "Primitive Drawing API Reference — LWXGL"
+sidebarTitle: "Primitives"
+description: "Reference for GPrimitiveRect, GPrimitiveCircle, GPrimitiveLine, and GPrimitiveSprite: draw shapes and sprites into LWXGL image element pixel buffers."
+---
+
+LWXGL provides four primitive drawing functions that write palette-index bytes directly into an image element's pixel buffer. All primitives operate in the local coordinate space of the target image, where (0, 0) is the top-left corner. Because primitives modify the raw buffer rather than the screen, you must call `GUpdateImage(id)` after any drawing operations to flush the changes to the display.
+
+<Tip>
+All primitive functions silently clip any writes that fall outside the bounds of the image element's pixel buffer. No crash or error occurs for out-of-bounds coordinates.
+</Tip>
+
+---
+
+### GPrimitiveRect
+
+```c
+void GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+Draws a filled rectangle with a 1-pixel border into the image element's pixel buffer. The outer edge of the rectangle (the leftmost column, rightmost column, top row, and bottom row) is painted with the `fg` (foreground/border) color. All interior pixels are painted with the `bg` (fill) color.
+
+Pass `-1` for `fg` to skip a distinct border — border pixels will fall through and be written as `bg` instead. Pass `-1` for `bg` to leave interior pixels untouched. Both may be `-1` simultaneously to produce a no-op.
+
+<ParamField path="id" type="int" required>
+  The element ID of the target image, as passed to `GCreateImage`.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  The x coordinate of the top-left corner of the rectangle, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  The y coordinate of the top-left corner of the rectangle, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="fg" type="int" required>
+  Palette index (0–15) for the border pixels, or `-1` to draw border pixels using `bg` instead.
+</ParamField>
+
+<ParamField path="bg" type="int" required>
+  Palette index (0–15) for the interior fill pixels, or `-1` to skip writing interior pixels entirely.
+</ParamField>
+
+---
+
+### GPrimitiveCircle
+
+```c
+void GPrimitiveCircle(int id, int cx, int cy, int r, int fg, int bg);
+```
+
+Draws a filled circle with a 1-pixel-wide border into the image element's pixel buffer. The border is computed using the distance formula: a pixel at `(x, y)` is on the border if `(r-1)² ≤ dx²+dy² ≤ r²`, and inside the fill region if `dx²+dy² < (r-1)²`. Border pixels are drawn first; fill pixels only write to positions not already on the border.
+
+Pass `-1` for `fg` to omit the outline entirely. Pass `-1` for `bg` to render only the outline with no fill.
+
+<ParamField path="id" type="int" required>
+  The element ID of the target image, as passed to `GCreateImage`.
+</ParamField>
+
+<ParamField path="cx" type="int" required>
+  The x coordinate of the circle's center, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="cy" type="int" required>
+  The y coordinate of the circle's center, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="r" type="int" required>
+  Radius of the circle in pixels.
+</ParamField>
+
+<ParamField path="fg" type="int" required>
+  Palette index (0–15) for the 1-pixel border outline, or `-1` to skip the outline.
+</ParamField>
+
+<ParamField path="bg" type="int" required>
+  Palette index (0–15) for the filled interior, or `-1` to skip the fill.
+</ParamField>
+
+---
+
+### GPrimitiveLine
+
+```c
+void GPrimitiveLine(int id, int x1, int y1, int x2, int y2, int color);
+```
+
+Draws a straight line from `(x1, y1)` to `(x2, y2)` into the image element's pixel buffer. The line is rasterized using incremental floating-point stepping: the number of steps is `max(|dx|, |dy|)`, and at each step both x and y are advanced by `dx/steps` and `dy/steps` respectively. Each stepped position is rounded to the nearest integer pixel and written with the given palette color.
+
+<ParamField path="id" type="int" required>
+  The element ID of the target image, as passed to `GCreateImage`.
+</ParamField>
+
+<ParamField path="x1" type="int" required>
+  X coordinate of the line's start point, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="y1" type="int" required>
+  Y coordinate of the line's start point, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="x2" type="int" required>
+  X coordinate of the line's end point, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="y2" type="int" required>
+  Y coordinate of the line's end point, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  Palette index (0–15) for the line pixels.
+</ParamField>
+
+---
+
+### GPrimitiveSprite
+
+```c
+void GPrimitiveSprite(int id, int sx, int sy, int color, const char* sprite, int scale);
+```
+
+Draws a monochrome RLE-encoded sprite anchored at `(sx, sy)` into the image element's pixel buffer. The sprite string describes a 2D pixel pattern using a compact run-length encoding. `#` pixels are written with the given foreground `color`; `.` pixels are written with palette index `0` (black, the transparent slot). Row advances reset the x position back to `sx`.
+
+The `scale` parameter acts as a pixel magnification factor: each logical sprite pixel is expanded to a `scale × scale` block of image pixels. At `scale = 1` the sprite renders at native resolution; at `scale = 2` every pixel becomes a 2×2 block, and so on.
+
+<ParamField path="id" type="int" required>
+  The element ID of the target image, as passed to `GCreateImage`.
+</ParamField>
+
+<ParamField path="sx" type="int" required>
+  X coordinate of the sprite's top-left anchor, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="sy" type="int" required>
+  Y coordinate of the sprite's top-left anchor, in the image's local pixel space.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  Palette index (0–15) used for foreground (`#`) pixels.
+</ParamField>
+
+<ParamField path="sprite" type="const char*" required>
+  Null-terminated RLE sprite string. See the format table below.
+</ParamField>
+
+<ParamField path="scale" type="int" required>
+  Pixel scale factor. `1` renders at 1:1; `2` makes each logical pixel a 2×2 block of image pixels, etc.
+</ParamField>
+
+#### Sprite String Format
+
+| Token | Meaning |
+|-------|---------|
+| `#` | One foreground pixel (written as `color`) |
+| `.` | One transparent pixel (written as palette index 0 — black) |
+| `$` | Move to the next row: reset x to `sx` and advance y by one scaled pixel height |
+| `>` | Skip one pixel to the right (advance x by one scaled pixel width, no write) |
+| `N<token>` | Repeat the following single token `N` times (e.g. `3#` draws three foreground pixels) |
+| `N[...]` | Repeat the entire group in brackets `N` times (e.g. `2[#.]` draws `#.#.`) |
+| `!` | End of sprite — parsing stops here |
+
+<Note>
+Groups (`[...]`) may be nested. The repeat count `N` always applies to the token or group that immediately follows it. A token with no preceding count is drawn exactly once.
+</Note>
+
+#### Example — Filled Cross at Scale 2
+
+The sprite string below draws a 3-pixel-wide cross on a 7×7 logical grid, then renders it at 2× scale (14×14 image pixels):
+
+```c
+GCreateImage(3, 50, 50, 64, 64);
+/* A 3-pixel wide cross on a 7x7 grid */
+GPrimitiveSprite(3, 0, 0, 15, ">2#$>2#$7#$>2#$>2#$", 2);
+GUpdateImage(3);
+```
+
+The cross uses palette index `15` (white) as the foreground color. After `GPrimitiveSprite` modifies the buffer, `GUpdateImage` flushes the changes to the screen.

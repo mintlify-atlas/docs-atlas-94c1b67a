@@ -1,0 +1,137 @@
+---
+title: "Text Input Element API — LWXGL"
+sidebarTitle: "Input"
+description: "API reference for GCreateInput and GGetInput: create keyboard-driven text entry fields that capture typed characters when hovered."
+---
+
+LWXGL text input elements allow users to type freeform text directly in the window. An input field becomes active whenever the mouse cursor is positioned over it — there is no explicit focus click required. Typed printable characters are appended to the field's internal buffer, and a blinking underscore cursor is drawn at the end to indicate the active state. The nibble-packed color byte convention (shared with buttons) controls the inactive and hover visual states independently.
+
+---
+
+## GCreateInput
+
+```c
+void GCreateInput(int id, int x, int y, int w, int h, int u, int hvr, int max);
+```
+
+Creates a text input element, or replaces any existing element at the given `id`. The internal character buffer is 128 bytes and is zero-initialized on creation. Characters in the printable ASCII range (codes 32–126) are accepted; **Backspace** removes the last character. Input is captured when the mouse cursor is inside the element bounds and no modal dialog is open.
+
+<ParamField path="id" type="int" required>
+  Element slot index. If an element already exists at this ID it is freed and replaced.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the input field's top-left corner.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the input field's top-left corner.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the input field in pixels. Pass `-1` to auto-size: the width is calculated as `(max + 1) * 9 + 10`, which fits exactly `max` characters in the `9x15` font with a 5-pixel left padding and enough room for the cursor indicator.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the input field in pixels. A height of `22`–`28` pixels is typical for a single-line field using the `9x15` font.
+</ParamField>
+
+<ParamField path="u" type="int" required>
+  Nibble-packed color byte for the **inactive** state (cursor not over the field). Low nibble = fill index, high nibble = border index. See the [Button & Checkbox page](/api/button-and-checkbox#nibble-packed-color-bytes) for a full explanation of nibble packing.
+</ParamField>
+
+<ParamField path="hvr" type="int" required>
+  Nibble-packed color byte for the **hover / active** state (cursor over the field). Low nibble = fill index, high nibble = border index.
+</ParamField>
+
+<ParamField path="max" type="int" required>
+  Maximum number of characters the field will accept. The internal buffer is always 128 bytes, so `max` must be **≤ 127** to leave room for the null terminator.
+</ParamField>
+
+<Warning>
+  Setting `max` greater than `127` will allow the input logic to write past the end of the 128-byte internal buffer, causing undefined behavior. Always keep `max ≤ 127`.
+</Warning>
+
+<Note>
+  Input is hover-driven: whichever input element the cursor is over at render time receives keyboard events. If two input elements overlap, the one rendered last (highest ID that overlaps the cursor) takes input.
+</Note>
+
+---
+
+## GGetInput
+
+```c
+char* GGetInput(int id);
+```
+
+Returns a pointer to the internal null-terminated character buffer for the input element at the given `id`. You can read or inspect this string at any time — for example, in a button's `onclick` handler or in the per-frame `GSimpleWindowLoop` callback.
+
+<ParamField path="id" type="int" required>
+  Element slot index of the input field to query.
+</ParamField>
+
+**Return value:** A `char*` pointing directly into the element's internal 128-byte buffer. The string is always null-terminated. The pointer remains valid until the element is deleted with `GDeleteElement`.
+
+<Warning>
+  Do not `free()` the returned pointer. It points into memory owned by the element and will be released automatically when the element is deleted.
+</Warning>
+
+<Tip>
+  To clear an input field programmatically, call `GCreateInput` again with the same `id` and parameters — this reinitializes the buffer to all zeros. Alternatively, you can `memset` the returned pointer directly (the buffer is `max + 1` bytes in use, up to 128 total).
+</Tip>
+
+---
+
+## Example
+
+The example below creates a name input field and a submit button. The button's `onclick` handler reads the current input value and prints it. The input auto-sizes its width to fit 31 characters.
+
+```c
+#include <stdio.h>
+#include <string.h>
+#include "libLWXGL.h"
+
+#define ID_NAME_INPUT   0
+#define ID_SUBMIT_BTN   1
+
+void on_submit(void) {
+    char *name = GGetInput(ID_NAME_INPUT);
+
+    if (strlen(name) == 0) {
+        printf("Please enter a name.\n");
+        return;
+    }
+
+    printf("Hello, %s!\n", name);
+}
+
+int main(void) {
+    GCreateWindow(500, 160, "Input Demo", 0);
+
+    /* Label above the input */
+    GCreateText(2, 30, 30, 15, "Enter your name:");
+
+    /* Input field: auto-width for up to 31 chars, height=24.
+       u  = border=7 (light gray), fill=1 (dark background)  -> 0x71
+       hvr = border=10 (bright green), fill=1                 -> 0xA1 */
+    GCreateInput(ID_NAME_INPUT,
+                 30, 52,
+                 -1, 24,        /* w=-1 auto-size, h=24       */
+                 (7  << 4) | 1, /* u:   border=7,  fill=1     */
+                 (10 << 4) | 1, /* hvr: border=10, fill=1     */
+                 31);           /* max 31 characters          */
+
+    /* Submit button */
+    GCreateButton(ID_SUBMIT_BTN,
+                  30, 90, 100, 26,
+                  (7 << 4) | 8,
+                  (8 << 4) | 9,
+                  (5 << 4) | 6,
+                  "Submit",
+                  on_submit);
+
+    GSimpleWindowLoop(60, NULL);
+    GDeleteWindow();
+    return 0;
+}
+```

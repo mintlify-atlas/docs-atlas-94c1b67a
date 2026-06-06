@@ -1,0 +1,328 @@
+---
+title: "Window & Loop API Reference — LWXGL"
+sidebarTitle: "Window"
+description: "Complete reference for LWXGL window creation, the render loop, lifecycle functions, modals, and the palette management API."
+---
+
+LWXGL exposes a small, focused set of functions for managing the lifetime of an X11 window. You create a window with `GCreateWindow`, drive it through either the built-in `GSimpleWindowLoop` or a manual event–render loop, and clean up with `GTerminateWindow`. The palette, modal, and image-refresh helpers documented here complement that core lifecycle.
+
+---
+
+### GCreateWindow
+
+```c
+int GCreateWindow(int w, int h, const char* name, int bgcol);
+```
+
+Opens an X11 window of the given dimensions, allocates all 16 palette colors into the default colormap, creates a back-buffer `Pixmap` for double-buffering, loads the `9x15` bitmap font, and registers the `WM_DELETE_WINDOW` protocol so the close button is handled correctly. The window is fixed-size — the window manager will not allow the user to resize it.
+
+<ParamField path="w" type="int" required>
+  Width of the window in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the window in pixels.
+</ParamField>
+
+<ParamField path="name" type="const char*" required>
+  Null-terminated string used as the window title shown in the title bar.
+</ParamField>
+
+<ParamField path="bgcol" type="int" required>
+  Background palette index (0–15). This color is used to clear the back-buffer at the start of every `GRenderWindow` call.
+</ParamField>
+
+**Return value**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success. |
+| `1` | `XOpenDisplay` failed — no X11 display is available. |
+| `2` | The `9x15` bitmap font could not be loaded. |
+| `3` | A window has already been created (only one window is supported). |
+| `127 + i` | `XAllocColor` failed for palette index `i` (0–15). |
+
+<Warning>
+  Always check the return value before entering the event loop. A non-zero return means the window was **not** created and no resources were allocated, so `GTerminateWindow` must **not** be called.
+</Warning>
+
+---
+
+### GTerminateWindow
+
+```c
+void GTerminateWindow(void);
+```
+
+Frees every resource acquired by `GCreateWindow` and any subsequently created elements. Specifically, this function deletes all active elements, frees the graphics context, the back-buffer `Pixmap`, the stipple `Pixmap`, and all 16 allocated colors, then destroys the window and closes the display connection. Call this exactly once, after `GWindowShouldClose()` returns `1` (or after `GSimpleWindowLoop` returns).
+
+<Warning>
+  Do not call `GTerminateWindow` if `GCreateWindow` returned a non-zero error code — no resources will have been allocated, and calling it will result in undefined behavior.
+</Warning>
+
+---
+
+### GDeleteWindow
+
+```c
+void GDeleteWindow(void);
+```
+
+Requests that the window close. If a delete callback has been registered with `GEventAttachDelete`, it is called and its return value becomes the new close flag (return `1` to confirm, `0` to cancel). If no callback is registered, the close flag is set to `1` unconditionally.
+
+This function is called internally when the user clicks the window's close button or presses **Ctrl+Escape**. You may also call it programmatically to close the window from application code.
+
+<Note>
+  `GDeleteWindow` does **not** free resources. Always follow the loop exit with a call to `GTerminateWindow`.
+</Note>
+
+---
+
+### GWindowShouldClose
+
+```c
+int GWindowShouldClose(void);
+```
+
+Returns `1` if the window has been marked for closing (i.e., `GDeleteWindow` was called and the close flag was set), `0` otherwise. Use this as the condition for a manual event loop.
+
+**Return value** — `1` if closing, `0` if still running.
+
+---
+
+### GHandleWindowEvents
+
+```c
+void GHandleWindowEvents(void);
+```
+
+Drains all pending X11 events from the display connection and dispatches them to the appropriate internal handlers (expose, keyboard, mouse button, pointer motion, and leave-window events). Must be called once per frame in a manual loop before `GRenderWindow`. `GSimpleWindowLoop` calls this automatically.
+
+<Note>
+  `GHandleWindowEvents` processes the entire queue in a single call, so it is safe to call it only once per frame without starving the event queue.
+</Note>
+
+---
+
+### GRenderWindow
+
+```c
+void GRenderWindow(void);
+```
+
+Performs a complete render pass:
+
+1. Clears the back-buffer with the background palette color.
+2. Renders all registered elements in index order.
+3. Draws the modal dialog overlay if one is active.
+4. Draws the debug overlay (FPS and frame-work-time graph) if the debug display is enabled.
+5. Blits the completed back-buffer to the visible window via `XCopyArea`.
+
+All drawing is performed off-screen on the back-buffer `Pixmap` before the final blit, so there is no tearing or partial-frame visibility.
+
+---
+
+### GSimpleWindowLoop
+
+```c
+void GSimpleWindowLoop(int target_fps, void (*on_every)(int));
+```
+
+Runs a fixed-FPS event loop that handles events, renders, and calls your per-frame callback on each tick. The loop uses `std::chrono::steady_clock` and will sleep or yield the thread between frames to stay close to the requested rate. It also measures per-frame work time and feeds it into the debug overlay's rolling average. The function returns only when `GWindowShouldClose()` becomes true.
+
+<ParamField path="target_fps" type="int" required>
+  Desired frames per second. The frame budget is computed as `1 000 000 / target_fps` microseconds.
+</ParamField>
+
+<ParamField path="on_every" type="void (*)(int)" >
+  Callback invoked once per rendered frame. Receives the current **tick counter** (starts at `0`, increments by `1` each frame). Pass `NULL` if no per-frame callback is needed.
+</ParamField>
+
+<Tip>
+  `GSimpleWindowLoop` calls `GHandleWindowEvents` and `GRenderWindow` for you — do not call those manually inside `on_every` or you will render twice per frame.
+</Tip>
+
+---
+
+### GSpawnModal
+
+```c
+void GSpawnModal(int type, const char* msg, void (*on_confirm)(void));
+```
+
+Displays a modal dialog drawn over the window contents. While the modal is active, all element interactions and the global click and key callbacks are suppressed — only the modal's own buttons accept input.
+
+<ParamField path="type" type="int" required>
+  Dialog button layout. `0` renders an **OK** button only. `1` renders both **OK** and **Cancel** buttons.
+</ParamField>
+
+<ParamField path="msg" type="const char*" required>
+  Null-terminated message string to display in the dialog body. Newline characters (`\n`) are supported for multi-line messages.
+</ParamField>
+
+<ParamField path="on_confirm" type="void (*)(void)">
+  Callback invoked when the user clicks **OK**. Pass `NULL` if no action is needed on confirmation. The **Cancel** button always dismisses the modal without calling this callback.
+</ParamField>
+
+<Note>
+  Only one modal can be active at a time. Calling `GSpawnModal` while a modal is already displayed will overwrite the current modal state immediately.
+</Note>
+
+---
+
+### GQueryModalOpen
+
+```c
+int GQueryModalOpen(void);
+```
+
+Returns `1` if a modal dialog is currently displayed and active, `0` otherwise. Useful for suppressing application-level logic that should not run while waiting for user confirmation.
+
+**Return value** — `1` if a modal is open, `0` if not.
+
+---
+
+### GRedrawAllImages
+
+```c
+void GRedrawAllImages(void);
+```
+
+Marks every image element's internal previous-frame buffer as dirty, forcing a full pixel-data retransfer on the next `GRenderWindow` call. This is called automatically by `GPaletteModify` (when the `redraw` parameter is non-zero) and `GPaletteReset`, so you rarely need to invoke it directly.
+
+---
+
+## Palette API
+
+LWXGL maintains an internal 16-color palette (indices 0–15) that maps to X11 colormap entries. All drawing operations, including backgrounds, text, elements, and primitives, reference colors by palette index. The default palette is a fixed CGA-inspired set loaded when `GCreateWindow` is called.
+
+### GPaletteQuery
+
+```c
+void GPaletteQuery(int idx, unsigned char* r, unsigned char* g, unsigned char* b);
+```
+
+Reads the current RGB values for a palette entry by querying the X11 colormap. The values are written to the provided pointers.
+
+<ParamField path="idx" type="int" required>
+  Palette index to query (0–15).
+</ParamField>
+
+<ParamField path="r" type="unsigned char*" required>
+  Pointer to a `unsigned char` that will receive the red component (0–255).
+</ParamField>
+
+<ParamField path="g" type="unsigned char*" required>
+  Pointer to a `unsigned char` that will receive the green component (0–255).
+</ParamField>
+
+<ParamField path="b" type="unsigned char*" required>
+  Pointer to a `unsigned char` that will receive the blue component (0–255).
+</ParamField>
+
+---
+
+### GPaletteModify
+
+```c
+void GPaletteModify(int idx, unsigned char r, unsigned char g, unsigned char b, int redraw);
+```
+
+Replaces the color at palette index `idx` by freeing the old colormap entry and allocating a new one with the given RGB values. If `redraw` is non-zero, `GRedrawAllImages` is called automatically so image elements using the changed color are immediately updated.
+
+<ParamField path="idx" type="int" required>
+  Palette index to modify (0–15).
+</ParamField>
+
+<ParamField path="r" type="unsigned char" required>
+  New red component (0–255).
+</ParamField>
+
+<ParamField path="g" type="unsigned char" required>
+  New green component (0–255).
+</ParamField>
+
+<ParamField path="b" type="unsigned char" required>
+  New blue component (0–255).
+</ParamField>
+
+<ParamField path="redraw" type="int" required>
+  Pass `1` to trigger an automatic image redraw after the color change, `0` to skip it.
+</ParamField>
+
+---
+
+### GPaletteReset
+
+```c
+void GPaletteReset(void);
+```
+
+Restores all 16 palette entries to the built-in default CGA-style colors, then calls `GRedrawAllImages` to ensure image elements are refreshed. Useful for undoing runtime palette modifications.
+
+---
+
+## Default Palette
+
+The following table lists the 16 default palette colors loaded by `GCreateWindow`.
+
+| Index | Name | R | G | B |
+|-------|------|---|---|---|
+| 0 | Black | 0 | 0 | 0 |
+| 1 | Dark Blue | 3 | 3 | 173 |
+| 2 | Dark Green | 0 | 170 | 0 |
+| 3 | Dark Cyan | 0 | 168 | 168 |
+| 4 | Dark Red | 186 | 6 | 6 |
+| 5 | Dark Magenta | 168 | 0 | 168 |
+| 6 | Orange | 230 | 126 | 34 |
+| 7 | Light Gray | 168 | 168 | 168 |
+| 8 | Dark Gray | 85 | 87 | 83 |
+| 9 | Light Blue | 87 | 87 | 255 |
+| 10 | Light Green | 85 | 255 | 85 |
+| 11 | Light Cyan | 96 | 240 | 240 |
+| 12 | Light Red | 255 | 85 | 85 |
+| 13 | Light Magenta | 240 | 84 | 240 |
+| 14 | Yellow | 244 | 242 | 54 |
+| 15 | White | 255 | 255 | 255 |
+
+---
+
+## Minimal Complete Example
+
+The following program creates a 640×480 window with a black background, runs at 60 fps, and closes cleanly when the user presses the window's close button.
+
+```c
+#include "libLWXGL.h"
+#include <stdio.h>
+
+static void on_frame(int tick) {
+    /* Called once per frame. tick starts at 0 and increments each frame. */
+    (void)tick;
+}
+
+int main(void) {
+    /* 0 = black background (palette index 0) */
+    int result = GCreateWindow(640, 480, "My LWXGL App", 0);
+    if (result != 0) {
+        fprintf(stderr, "GCreateWindow failed: %d\n", result);
+        return 1;
+    }
+
+    /* Run at 60 fps; on_frame is called every tick */
+    GSimpleWindowLoop(60, on_frame);
+
+    /* Free all X11 resources after the loop exits */
+    GTerminateWindow();
+    return 0;
+}
+```
+
+To use a manual loop instead of `GSimpleWindowLoop`:
+
+```c
+while (!GWindowShouldClose()) {
+    GHandleWindowEvents();
+    GRenderWindow();
+}
+GTerminateWindow();
+```

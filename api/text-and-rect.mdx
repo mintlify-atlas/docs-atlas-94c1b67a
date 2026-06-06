@@ -1,0 +1,169 @@
+---
+title: "Text and Rectangle Element API — LWXGL"
+sidebarTitle: "Text & Rect"
+description: "API reference for GCreateText and GCreateRect: create palette-colored text labels and filled rectangle panel elements in an LWXGL window."
+---
+
+LWXGL provides two foundational element types for rendering static visual content: text labels drawn with a fixed bitmap font, and filled rectangles used for panels, dividers, or decorative backgrounds. Both elements are identified by an integer ID and rendered on every call to `GRenderWindow`. This page also covers the shared management functions `GDeleteElement` and `GElemModifyBounds`, which apply to every element type in the library.
+
+---
+
+## GCreateText
+
+```c
+void GCreateText(int id, int x, int y, int color, const char* text);
+```
+
+Creates a text label element, or replaces any existing element at the given `id`. The text is rendered using the `9x15` bitmap font built into the X11 server. Multi-line strings are supported — each `\n` character advances rendering to the next line, 16 pixels lower. Only a single foreground palette color is applied; there is no background fill for text elements (the window or a `GCreateRect` element beneath it provides the background).
+
+<ParamField path="id" type="int" required>
+  Element slot index. If an element already exists at this ID it is freed and replaced.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the left edge of the text, in pixels from the window's top-left corner.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the text baseline's first line. The renderer adds 11 pixels internally before drawing the first line, so `y=0` places the top of the first glyph near the top of the window.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  Palette index (0–15) for the text foreground color.
+</ParamField>
+
+<ParamField path="text" type="const char*" required>
+  Null-terminated string to display. Embed `\n` characters for multi-line output. The pointer is stored directly — do not free or mutate the string after passing it.
+</ParamField>
+
+<Note>
+  Each line of a multi-line string is rendered at `y + 16 * line_number` (offset from the starting baseline). Line spacing is fixed at 16 pixels regardless of font size.
+</Note>
+
+---
+
+## GCreateRect
+
+```c
+void GCreateRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+Creates a filled rectangle element, or replaces any existing element at the given `id`. The rectangle is drawn in two passes: first the interior fill using `bg`, then a one-pixel border outline using `fg`. Either pass can be suppressed by passing `-1` for the corresponding color parameter.
+
+<ParamField path="id" type="int" required>
+  Element slot index. If an element already exists at this ID it is freed and replaced.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the rectangle's top-left corner.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the rectangle's top-left corner.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="fg" type="int" required>
+  Palette index (0–15) for the border outline. Pass `-1` to skip drawing the border entirely.
+</ParamField>
+
+<ParamField path="bg" type="int" required>
+  Palette index (0–15) for the interior fill. Pass `-1` to skip the fill (transparent interior).
+</ParamField>
+
+<Tip>
+  Use `fg=-1` with a solid `bg` for a plain filled panel with no border. Use `bg=-1` with a solid `fg` for a hollow rectangle outline over whatever is rendered beneath it.
+</Tip>
+
+---
+
+## Shared Element Management
+
+These functions work on **any** element type created through LWXGL, not just text and rectangles.
+
+### GDeleteElement
+
+```c
+void GDeleteElement(int index);
+```
+
+Frees the element at the given ID and sets its slot to `NULL`. For image elements, the backing `XImage` and pixel buffers are also released. Calling this on an already-null or out-of-range slot is a no-op.
+
+<ParamField path="index" type="int" required>
+  Element slot index to free.
+</ParamField>
+
+<Warning>
+  After calling `GDeleteElement`, any pointer previously returned by `GGetImageData` or `GGetInput` for that ID becomes invalid. Do not dereference such pointers after deletion.
+</Warning>
+
+### GElemModifyBounds
+
+```c
+void GElemModifyBounds(int id, int x, int y, int w, int h);
+```
+
+Updates the position and dimensions of an existing element without recreating it. The change takes effect on the next call to `GRenderWindow`. This is more efficient than destroying and recreating an element just to reposition it.
+
+<ParamField path="id" type="int" required>
+  Element slot index to update.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  New X coordinate.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  New Y coordinate.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  New width in pixels. For text elements, `w` and `h` are unused by the renderer, but the values are still stored.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  New height in pixels.
+</ParamField>
+
+---
+
+## Example
+
+The following example creates a gray panel rectangle and overlays a white title label onto it. Element IDs `0` and `1` are used — IDs are arbitrary non-negative integers you manage yourself.
+
+```c
+#include "libLWXGL.h"
+
+void setup(void) {
+    /* Draw a dark gray filled panel at (20, 20), 300×40 pixels.
+       fg=7 (light gray border), bg=8 (dark gray fill) */
+    GCreateRect(0, 20, 20, 300, 40, 7, 8);
+
+    /* Place a white text label centered inside the panel.
+       color=15 (white) */
+    GCreateText(1, 30, 28, 15, "LWXGL Demo Panel");
+}
+
+void on_frame(int frame) {
+    /* Slide the panel 1 pixel to the right every frame */
+    if (frame % 2 == 0) {
+        GElemModifyBounds(0, 20 + frame / 2, 20, 300, 40);
+        GElemModifyBounds(1, 30 + frame / 2, 28, 0, 0);
+    }
+}
+
+int main(void) {
+    GCreateWindow(640, 480, "Text & Rect Demo", 0);
+    setup();
+    GSimpleWindowLoop(60, on_frame);
+    GDeleteWindow();
+    return 0;
+}
+```

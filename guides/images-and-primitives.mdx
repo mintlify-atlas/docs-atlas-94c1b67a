@@ -1,0 +1,215 @@
+---
+title: "Drawing with Image Canvases and Primitives in LWXGL"
+sidebarTitle: "Images & Primitives"
+description: "Allocate pixel-buffer image elements, draw shapes and sprites onto them, and flush changes to the screen with GUpdateImage."
+---
+
+Image elements are LWXGL's primary tool for custom 2D rendering. An image element is a `width × height` pixel buffer where every byte holds a palette color index from 0 to 15. You can write to this buffer directly, use the built-in primitive drawing functions to compose shapes and sprites, or mix both approaches. Changes become visible on screen only after you call `GUpdateImage`, which efficiently transfers only the pixels that changed since the last flush.
+
+<Note>
+  Coordinates used inside primitive functions are relative to the image element's own pixel buffer — the top-left corner of the buffer is always `(0, 0)` — not to the window coordinate space.
+</Note>
+
+---
+
+## Creating an Image Element
+
+```c
+void GCreateImage(int id, int x, int y, int w, int h);
+```
+
+Allocates an `XImage` backed by two byte arrays of size `w * h`: one for the current pixel data and one to track the previous state for dirty-pixel optimization. The image is placed at window position `(x, y)` and rendered every frame by `GRenderWindow`.
+
+```c
+/* Create a 200×150 image canvas at window position (10, 10) */
+GCreateImage(2, 10, 10, 200, 150);
+```
+
+---
+
+## Writing Pixel Data
+
+`GGetImageData` returns a pointer to the raw pixel buffer. The buffer is stored in row-major order: pixel at column `x`, row `y` lives at index `y * width + x`. Each byte is a palette color index (0–15).
+
+```c
+unsigned char *GGetImageData(int id);
+```
+
+```c
+unsigned char *pixels = GGetImageData(2);
+int w = 200, h = 150;
+
+/* Set the pixel at (80, 50) to palette index 12 (light red) */
+pixels[50 * w + 80] = 12;
+```
+
+You can write to any region of the buffer between frames without LWXGL noticing — changes are only uploaded to the X server when you call `GUpdateImage`.
+
+---
+
+## Flushing to Screen
+
+```c
+void GUpdateImage(int id);
+```
+
+Walks the pixel buffer and, for each byte that differs from the previous-frame snapshot, calls `XImage::put_pixel` and updates the snapshot. Only changed pixels are written to the `XImage`, making it efficient to call `GUpdateImage` every frame even when most pixels are static.
+
+```c
+void per_frame(int tick) {
+    unsigned char *px = GGetImageData(2);
+    /* … draw something … */
+    GUpdateImage(2); /* flush dirty pixels */
+}
+```
+
+<Info>
+  `GRenderWindow` copies the finalized `XImage` to the screen back-buffer, but it does **not** call `GUpdateImage` for you. You must call `GUpdateImage` explicitly after modifying pixel data.
+</Info>
+
+---
+
+## Clearing an Image
+
+```c
+void GClearImage(int id, int c);
+```
+
+Fills the entire pixel buffer with palette index `c` using a single `memset`. This is much faster than looping over the buffer yourself and is the recommended way to clear the canvas at the start of each frame.
+
+```c
+GClearImage(2, 0); /* fill with black (index 0) */
+```
+
+---
+
+## Drawing Primitives
+
+All primitive functions write palette indices directly into an image element's pixel buffer. None of them call `GUpdateImage` — remember to flush after drawing.
+
+<Accordion title="GPrimitiveRect — Filled Rectangle with Border">
+
+```c
+void GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+Draws a filled rectangle. `fg` is the border/outline color and `bg` is the interior fill color. Pass `-1` for either to skip that layer.
+
+```c
+/* Dark gray fill, white border */
+GPrimitiveRect(2, 10, 10, 80, 40, 15, 8);
+
+/* Border only */
+GPrimitiveRect(2, 100, 10, 80, 40, 15, -1);
+
+/* Fill only */
+GPrimitiveRect(2, 10, 60, 80, 40, -1, 2);
+```
+
+</Accordion>
+
+<Accordion title="GPrimitiveCircle — Filled Circle with Border">
+
+```c
+void GPrimitiveCircle(int id, int cx, int cy, int r, int fg, int bg);
+```
+
+Draws a circle centered at `(cx, cy)` with radius `r`. `fg` is the 1-pixel outline color; `bg` is the interior fill. Pass `-1` to skip fill or border. Pixels outside the image bounds are silently clipped.
+
+```c
+/* Filled light-blue circle with a white border */
+GPrimitiveCircle(2, 100, 75, 30, 15, 9);
+
+/* Outline only */
+GPrimitiveCircle(2, 100, 75, 30, 15, -1);
+```
+
+</Accordion>
+
+<Accordion title="GPrimitiveLine — Straight Line">
+
+```c
+void GPrimitiveLine(int id, int x1, int y1, int x2, int y2, int color);
+```
+
+Draws a straight line from `(x1, y1)` to `(x2, y2)` using incremental floating-point stepping (similar to Bresenham's algorithm). `color` is a single palette index. Out-of-bounds pixels are skipped.
+
+```c
+/* Diagonal white line across the canvas */
+GPrimitiveLine(2, 0, 0, 199, 149, 15);
+```
+
+</Accordion>
+
+<Accordion title="GPrimitiveSprite — RLE Monochrome Sprite">
+
+```c
+void GPrimitiveSprite(int id, int sx, int sy, int color,
+                      const char *sprite, int scale);
+```
+
+Draws an RLE-encoded monochrome sprite with its top-left corner at `(sx, sy)`. `color` is the palette index used for filled pixels. `scale` is the pixel magnification factor (1 = 1:1, 2 = double-size, etc.).
+
+</Accordion>
+
+---
+
+## Sprite Format
+
+Sprites are described by compact ASCII strings. The renderer processes characters left-to-right, advancing `x` for each pixel drawn and resetting to `sx` on a newline.
+
+| Character | Meaning |
+|-----------|---------|
+| `#` | Draw one filled pixel using the `color` argument |
+| `.` | Draw one transparent pixel (palette index 0) |
+| `$` | Newline — move to the next row and reset `x` to `sx` |
+| `>` | Skip one pixel to the right (preceded by optional count) |
+| `N<char>` | Repeat `<char>` exactly `N` times (e.g. `5#` draws 5 filled pixels) |
+| `N[...]` | Repeat the group inside `[...]` exactly `N` times |
+| `!` | End of sprite — stop processing |
+
+A count prefix applies to the immediately following character or group. `>N` is shorthand for `N>` — it advances `N` pixels right.
+
+**Example — 5×5 diamond:**
+
+```c
+/*
+ *   #
+ *  ###
+ * #####
+ *  ###
+ *   #
+ */
+const char *diamond = ">2#$>1###$5#$>1###$>2#!";
+GPrimitiveSprite(2, 10, 10, 14, diamond, 1); /* draw in yellow (14) */
+```
+
+**Example — 3×3 cross:**
+
+```c
+const char *cross = ">#.#$###$>#.#!";
+GPrimitiveSprite(2, 50, 50, 15, cross, 2); /* draw in white, 2× scale */
+```
+
+**Example — repeating pattern using groups:**
+
+```c
+/* Draw four filled 2-pixel blocks with gaps: ##..##..##..##.. */
+const char *pattern = "4[2#2.]!";
+GPrimitiveSprite(2, 0, 0, 10, pattern, 1);
+```
+
+---
+
+## Redrawing All Images
+
+```c
+void GRedrawAllImages(void);
+```
+
+Forces every image element to be fully retransferred to its `XImage` on the next render pass, bypassing the dirty-pixel cache. This is useful after a palette modification, since changing a color index affects how every existing pixel with that index appears but does not change the pixel buffer values themselves.
+
+```c
+GPaletteModify(3, 0, 200, 200, 0); /* change color, don't auto-redraw yet */
+GRedrawAllImages();                 /* now force all image elements to refresh */
+```

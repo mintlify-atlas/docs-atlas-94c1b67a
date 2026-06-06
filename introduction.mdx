@@ -1,0 +1,53 @@
+---
+title: "LWXGL: Lightweight X11 GUI Library for Linux"
+sidebarTitle: "Introduction"
+description: "LWXGL is a minimal C/C++ shared library for building desktop GUI apps on Linux using Xlib. Learn what it provides and when to use it."
+---
+
+LWXGL (Lightweight X11 GUI Library) is a small, dependency-light C/C++ shared library that lets you open an X11 window, populate it with UI elements, draw graphics, and respond to user input — all through a straightforward procedural API. It targets Linux desktops running an X11 display server and wraps Xlib directly, so there is no heavy toolkit layer between your code and the display. If you need a self-contained GUI for a tool, demo, or small game without pulling in Qt, GTK, or similar frameworks, LWXGL is designed for that use case.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Window Management" icon="window">
+    Opens a fixed-size X11 window with a configurable background palette color. The window is non-resizable by design and uses a Pixmap backbuffer for flicker-free double-buffered rendering. Teardown is handled by a single `GTerminateWindow()` call.
+  </Card>
+  <Card title="ID-Based UI Elements" icon="table-layout">
+    Six built-in element types — text label, button, text input, checkbox, filled rectangle, and image canvas — are each created and referenced by an integer ID. Elements are stored in a flat array and can be deleted individually with `GDeleteElement(id)` or repositioned at runtime with `GElemModifyBounds`.
+  </Card>
+  <Card title="Image Canvas & Drawing Primitives" icon="pen-nib">
+    `GCreateImage` allocates a per-pixel canvas element backed by an `XImage`. The canvas is written to using palette-indexed drawing primitives: `GPrimitiveRect`, `GPrimitiveCircle`, `GPrimitiveLine`, and `GPrimitiveSprite` (an RLE-encoded monochrome sprite renderer with configurable scale). Call `GUpdateImage` to flush dirty pixels to the display.
+  </Card>
+  <Card title="Event System" icon="bolt">
+    Attach persistent callbacks with `GEventAttachKey`, `GEventAttachClick`, and `GEventAttachDelete`. For polling-style input, `GQueryMouse` returns the current cursor position and button state, `GQueryKeyboard` returns an 8-slot array of currently held key codes, and `GQueryKeyDown` tests for a specific key. Arrow and function keys are exposed via named constants such as `LWXGL_KEY_LEFT` and `LWXGL_KEY_FN`.
+  </Card>
+  <Card title="16-Color Palette" icon="palette">
+    All colors are referenced by index 0–15, a CGA-inspired set ranging from black (0) through white (15). The palette can be inspected with `GPaletteQuery`, overridden per-slot with `GPaletteModify`, and restored to defaults with `GPaletteReset`. Modifying a palette slot automatically redraws all image canvases when the `redraw` flag is set.
+  </Card>
+  <Card title="FPS-Capped Game Loop" icon="gauge-high">
+    `GSimpleWindowLoop(target_fps, on_every)` runs a blocking loop that calls `GHandleWindowEvents` and `GRenderWindow` every frame, sleeps between frames to honour the target frame rate, and invokes your optional per-tick callback with the current tick counter. A built-in debug overlay (toggle with F12) shows live FPS and average frame-time in microseconds.
+  </Card>
+</CardGroup>
+
+## How It Works
+
+Every visible element in LWXGL is identified by a non-negative integer ID that you choose at creation time. When you call `GCreateButton(1, ...)`, the library allocates an internal `Element` struct at index 1 in a flat vector and stores a pointer to the button's state. If you call `GCreateButton(1, ...)` again, the previous element at index 1 is freed first. This ID-based model makes it straightforward to reference, update, or delete any element later without holding C-level pointers.
+
+Colors throughout the API are **palette indices 0–15**. The default palette is a 16-entry CGA-like set: index 0 is black, index 7 is light gray, index 15 is white, and so on (see the full table in the source). For elements that carry two distinct color roles — a border color and a fill color — both are packed into a single `int` value as a byte: the **low nibble** (bits 3–0) holds the fill palette index and the **high nibble** (bits 7–4) holds the border palette index. For example, the value `0x78` means fill = index 8 (dark gray) and border = index 7 (light gray). The macros `L(b)` and `H(b)` are used internally to extract these nibbles.
+
+Rendering is double-buffered via a Pixmap (`bb`) that is the same size as the window. Each call to `GRenderWindow` clears the backbuffer to the background color, iterates over every element in order, dispatches to the appropriate renderer, and then copies the finished backbuffer to the visible window with `XCopyArea` followed by `XSync`. Image canvas elements are handled slightly differently: `GPrimitive*` functions write into a byte array of palette indices, and `GUpdateImage` walks only the changed pixels (comparing against a previous-state copy) to push updates into the underlying `XImage`.
+
+## Requirements
+
+<Note>
+  LWXGL requires a Linux system with a running X11 display server. The following packages must be present:
+
+  - **libX11** — the core Xlib runtime and development headers (package `libx11-dev` on Debian/Ubuntu).
+  - **The `9x15` bitmap font** — loaded at window creation time via `XLoadQueryFont`. This font ships with the `xfonts-base` package on Debian/Ubuntu. `GCreateWindow` returns error code `2` if the font cannot be found.
+
+  A C++11-capable compiler (GCC/G++) is required to build the library itself. Programs that *use* LWXGL can be written in C or C++ — the public header wraps all declarations in an `extern "C"` block.
+</Note>
+
+## Project Status & License
+
+LWXGL is an open-source project hosted at [github.com/dressedalarm184/lwxgl](https://github.com/dressedalarm184/lwxgl). It is intended as a lightweight building block rather than a full-featured GUI toolkit; the API surface is intentionally small. Contributions and issue reports are welcome through the GitHub repository.
